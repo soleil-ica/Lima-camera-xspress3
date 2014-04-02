@@ -56,24 +56,25 @@ eth2     Link encap:Ethernet  HWaddr 00:07:43:05:7c:65
 
 Note the carefully picked subnet masks etc and the MTU 9000
 We then have a script that should be executed automatically at boot.
- *
+
 cat /etc/init.d/xspress3.sh
---------------------------------------------------------------------------------
-#!/bin/bash
-#
-# static-arp        This is to register a static ARP address in the arp table at boot
-#
-# Kept as simple as possible hopefully this will auto register the associated
-# MAC with the private network address to allow the machine to communicate with the
-# test boards for xspress3
-# Derived from work by Duncan Russell, by William Helsby
-PATH=/sbin:/bin:/usr/bin:/usr/sbin
-arp -i eth2 -s 192.168.0.66 02:00:00:00:00:00
-#route -v add -host 192.168.0.66 eth2
-# Setting default and max buffer sizes for networking.
-sysctl -w net.core.rmem_max=1073741824
-sysctl -w net.core.rmem_default=1073741824
----------------------------------------------------------------------------------
+
+.. code-block:: sh
+
+  #!/bin/bash
+  #
+  # static-arp        This is to register a static ARP address in the arp table at boot
+  #
+  # Kept as simple as possible hopefully this will auto register the associated
+  # MAC with the private network address to allow the machine to communicate with the
+  # test boards for xspress3
+  # Derived from work by Duncan Russell, by William Helsby
+  PATH=/sbin:/bin:/usr/bin:/usr/sbin
+  arp -i eth2 -s 192.168.0.66 02:00:00:00:00:00
+  #route -v add -host 192.168.0.66 eth2
+  # Setting default and max buffer sizes for networking.
+  sysctl -w net.core.rmem_max=1073741824
+  sysctl -w net.core.rmem_default=1073741824
 
 Installation & Module configuration
 ````````````````````````````````````
