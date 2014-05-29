@@ -27,6 +27,7 @@
 #include "Xspress3Camera.h"
 #include "Exceptions.h"
 #include "Debug.h"
+#include "Xspress3Interface.h"
 
 using namespace lima;
 using namespace lima::Xspress3;
@@ -70,7 +71,7 @@ Camera::Camera(int nbCards, int maxFrames, string baseIPaddress, int basePort, s
 		m_baseIPaddress(baseIPaddress), m_basePort(basePort), m_baseMACaddress(baseMACaddress), m_nb_chans(nbChans),
 		m_create_module(createScopeModule), m_modname(scopeModuleName), m_card_index(cardIndex), m_debug(debug), m_npixels(4096), m_nscalers(XSP3_SW_NUM_SCALERS), m_no_udp(noUDP),
 		m_config_directory_name(directoryName), m_trigger_mode(IntTrig), m_image_type(Bpp32), m_nb_frames(1), m_acq_frame_nb(-1),
-		m_bufferCtrlObj() {
+															      m_bufferCtrlObj(), m_savingCtrlObj(*this)  {
 
 	DEB_CONSTRUCTOR();
 	m_card = -1;
@@ -96,15 +97,15 @@ void Camera::init() {
 	if (m_no_udp) {
 		m_baseMACaddress = "00:00:00:00:00:00";
 	}
-	std::cout << "Connecting to the Xspress3..." << std::endl;
+	DEB_TRACE() << "Connecting to the Xspress3...";
 	if ((m_handle = xsp3_config(m_nb_cards, m_max_frames, (char*)m_baseIPaddress.c_str(), m_basePort, (char*)m_baseMACaddress.c_str(), m_nb_chans,
 			m_create_module, (char*)m_modname.c_str(), m_debug, m_card_index)) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
-	std::cout << "Initialise the ROI's" << std::endl;
+	DEB_TRACE() << "Initialise the ROI's";
 	initRoi(-1);
 
-	std::cout << "Set up clock register to use ADC clock..." << std::endl;
+	DEB_TRACE() << "Set up clock register to use ADC clock...";
 	// the first card is the master clock
 	setCard(0);
 	setupClocks(XSP3_CLK_SRC_XTAL, XSP3_CLK_FLAGS_MASTER | XSP3_CLK_FLAGS_DITHER, 0);
@@ -116,11 +117,11 @@ void Camera::init() {
 	if (m_config_directory_name != "") {
 		restoreSettings();
 	}
-	std::cout <<  "Set up default run flags..." << std::endl;
+	DEB_TRACE() <<  "Set up default run flags...";
 	setRunMode();
 	m_status = Idle;
-	std::cout << "Use dtc " << m_use_dtc << std::endl;
-	std::cout << "Initialisation complete" << std::endl;
+	DEB_TRACE() << "Use dtc " << m_use_dtc;
+	DEB_TRACE() << "Initialisation complete";
 }
 
 void Camera::reset() {
@@ -175,20 +176,18 @@ int Camera::getNbHwAcquiredFrames() {
 void Camera::AcqThread::threadFunction() {
 	DEB_MEMBER_FUNCT();
 	AutoMutex aLock(m_cam.m_cond.mutex());
-//	StdBufferCbMgr& buffer_mgr = m_cam.m_bufferCtrlObj.getBuffer();
 
 	while (!m_cam.m_quit) {
 		while (m_cam.m_wait_flag && !m_cam.m_quit) {
-			std::cout << "Acq thread waiting" << std::endl;
+			DEB_TRACE() << "Acq thread waiting";
 			m_cam.m_thread_running = false;
-//			m_cam.m_cond.broadcast();
 			m_cam.m_cond.wait();
 		}
-		std::cout  << "Acq thread Running" << std::endl;
+		DEB_TRACE()  << "Acq thread Running";
 		m_cam.m_status = Running;
 		m_cam.m_thread_running = true;
 		if (m_cam.m_quit) {
-			std::cout  << "acq thread quit called" << std::endl;
+			DEB_TRACE()  << "acq thread quit called";
 			m_cam.m_status = Idle;
 			m_cam.m_thread_running = false;
 			return;
@@ -200,43 +199,43 @@ void Camera::AcqThread::threadFunction() {
 			struct timespec delay, remain;
 			delay.tv_sec = (int)floor(m_cam.m_exp_time);
 			delay.tv_nsec = (int)(1E9*(m_cam.m_exp_time-floor(m_cam.m_exp_time)));
-			std::cout << "acq thread will sleep for " << m_cam.m_exp_time << " second" << std::endl;
+			DEB_TRACE() << "acq thread will sleep for " << m_cam.m_exp_time << " second";
 			while (nanosleep(&delay, &remain) == -1 && errno == EINTR)
 			{
 				// stop called ?
 				AutoMutex aLock(m_cam.m_cond.mutex());
 				continueFlag = !m_cam.m_wait_flag;
 				if (m_cam.m_wait_flag) {
-					std::cout << "acq thread histogram stopped  by user" << std::endl;;
+					DEB_TRACE() << "acq thread histogram stopped  by user";
 					m_cam.stop();
 					break;
 				}
 				delay = remain;
 			}
-			if (m_cam.m_nb_frames > 1) {
+			if (m_cam.m_acq_frame_nb < m_cam.m_nb_frames-1) {
 				m_cam.pause();
 				m_cam.restart();
-				std::cout << "acq thread histogram paused and restarted" << std::endl;
+				DEB_TRACE() << "acq thread histogram paused and restarted";
 			} else {
-				std::cout << "acq thread histogram stop" << std::endl;;
+				DEB_TRACE() << "acq thread histogram stop";
 				m_cam.stop();
 			}
 			aLock.lock();
 			++m_cam.m_acq_frame_nb;
 			m_cam.m_read_wait_flag = false;
-			std::cout << "acq thread signal read thread - frame collected" << std::endl;
+			DEB_TRACE() << "acq thread signal read thread - frame collected";
 			m_cam.m_cond.broadcast();
 			aLock.unlock();
 		}
 		// wait for read thread to finish here
-		std::cout << "acq thread Wait for read thead to finish" << std::endl;
+		DEB_TRACE() << "acq thread Wait for read thead to finish";
 		aLock.lock();
 		m_cam.m_cond.wait();
 
 		m_cam.m_status = Idle;
 		m_cam.m_thread_running = false;
 		m_cam.m_wait_flag = true;
-		std::cout << "acq thread finished acquire " << m_cam.m_acq_frame_nb << " frames, required " << m_cam.m_nb_frames << " frames" << std::endl;
+		DEB_TRACE() << "acq thread finished acquire " << m_cam.m_acq_frame_nb << " frames, required " << m_cam.m_nb_frames << " frames";
 	}
 }
 
@@ -259,13 +258,14 @@ void Camera::ReadThread::threadFunction() {
 	DEB_MEMBER_FUNCT();
 	AutoMutex aLock(m_cam.m_cond.mutex());
 	StdBufferCbMgr& buffer_mgr = m_cam.m_bufferCtrlObj.getBuffer();
+	SavingCtrlObj& saving = m_cam.m_savingCtrlObj;
 
 	while (!m_cam.m_quit) {
 		while (m_cam.m_read_wait_flag && !m_cam.m_quit) {
-			std::cout << "Read thread waiting" << std::endl;
+			DEB_TRACE() << "Read thread waiting";
 			m_cam.m_cond.wait();
 		}
-		std::cout << "Read Thread Running" << std::endl;
+		DEB_TRACE() << "Read Thread Running";
 		if (m_cam.m_quit)
 			return;
 
@@ -274,22 +274,20 @@ void Camera::ReadThread::threadFunction() {
 		bool continueFlag = true;
 		while (continueFlag && (!m_cam.m_nb_frames || m_cam.m_read_frame_nb < m_cam.m_acq_frame_nb)) {
 			void* bptr = buffer_mgr.getFrameBufferPtr(m_cam.m_read_frame_nb);
-			std::cout << "buffer pointer " << bptr << std::endl;
-			std::cout << "read histogram & scaler data frame number " << m_cam.m_read_frame_nb << std::endl;
+			DEB_TRACE() << "buffer pointer " << bptr;
+			DEB_TRACE() << "read histogram & scaler data frame number " << m_cam.m_read_frame_nb;
 			m_cam.readFrame(bptr, m_cam.m_read_frame_nb);
-			// the scaler data is tagged onto the end of the histogram data until Lima has the
-			// capability of multiple buffers
-			//m_cam.readScalers(xptr->scalerData, m_cam.m_read_frame_nb);
 			HwFrameInfoType frame_info;
 			frame_info.acq_frame_nb = m_cam.m_read_frame_nb;
 			continueFlag = buffer_mgr.newFrameReady(frame_info);
-			std::cout << "readThread::threadFunction() newframe ready " << std::endl;
+			DEB_TRACE() << "readThread::threadFunction() newframe ready ";
+			saving.writeFrame(m_cam.m_read_frame_nb,1);
 			++m_cam.m_read_frame_nb;
 		}
 		aLock.lock();
 		// if all frames read wakeup the acq thread
 		if (m_cam.m_nb_frames == m_cam.m_read_frame_nb) {
-			std::cout << "broadcast to wake acq thread" << endl;
+		  DEB_TRACE() << "broadcast to wake acq thread";
 			m_cam.m_cond.broadcast();
 			aLock.unlock();
 		}
@@ -355,7 +353,7 @@ HwBufferCtrlObj* Camera::getBufferCtrlObj() {
 
 void Camera::setTrigMode(TrigMode mode) {
 	DEB_MEMBER_FUNCT();
-	std::cout << "Camera::setTrigMode() " << DEB_VAR1(mode) << std::endl;
+	DEB_TRACE() << "Camera::setTrigMode() " << DEB_VAR1(mode);
 	DEB_PARAM() << DEB_VAR1(mode);
 	switch (mode) {
 	case IntTrig:
@@ -381,7 +379,7 @@ void Camera::getTrigMode(TrigMode& mode) {
 
 void Camera::getExpTime(double& exp_time) {
 	DEB_MEMBER_FUNCT();
-	std::cout << "Camera::getExpTime() " << std::endl;
+	DEB_TRACE() << "Camera::getExpTime() ";
 	//	AutoMutex aLock(m_cond.mutex());
 	exp_time = m_exp_time;
 	DEB_RETURN() << DEB_VAR1(exp_time);
@@ -389,7 +387,7 @@ void Camera::getExpTime(double& exp_time) {
 
 void Camera::setExpTime(double exp_time) {
 	DEB_MEMBER_FUNCT();
-	std::cout << "Camera::setExpTime() " << DEB_VAR1(exp_time) << std::endl;
+	DEB_TRACE() << "Camera::setExpTime() " << DEB_VAR1(exp_time);
 
 	m_exp_time = exp_time;
 }
@@ -425,7 +423,7 @@ void Camera::getLatTimeRange(double& min_lat, double& max_lat) const {
 
 void Camera::setNbFrames(int nb_frames) {
 	DEB_MEMBER_FUNCT();
-	std::cout << "Camera::setNbFrames() " << DEB_VAR1(nb_frames) << std::endl;
+	DEB_TRACE() << "Camera::setNbFrames() " << DEB_VAR1(nb_frames);
 	if (m_nb_frames < 0) {
 		THROW_HW_ERROR(Error) << "Number of frames to acquire has not been set";
 	}
@@ -434,7 +432,7 @@ void Camera::setNbFrames(int nb_frames) {
 
 void Camera::getNbFrames(int& nb_frames) {
 	DEB_MEMBER_FUNCT();
-	std::cout << "Camera::getNbFrames() " << std::endl;
+	DEB_TRACE() << "Camera::getNbFrames() ";
 	DEB_RETURN() << DEB_VAR1(m_nb_frames);
 	nb_frames = m_nb_frames;
 }
@@ -442,6 +440,10 @@ void Camera::getNbFrames(int& nb_frames) {
 bool Camera::isAcqRunning() const {
 	AutoMutex aLock(m_cond.mutex());
 	return m_thread_running;
+}
+
+SavingCtrlObj* Camera::getSavingCtrlObj() {
+	return &m_savingCtrlObj;
 }
 
 /////////////////////////////////
@@ -458,7 +460,7 @@ bool Camera::isAcqRunning() const {
 void Camera::setupClocks(int clk_src, int flags, int tp_type)
 {
 	DEB_MEMBER_FUNCT();
-	std::cout << "Camera::setupClocks() " << DEB_VAR3(clk_src,flags,tp_type) << std::endl;
+	DEB_TRACE() << "Camera::setupClocks() " << DEB_VAR3(clk_src,flags,tp_type);
 	if (xsp3_clocks_setup(m_handle, m_card, clk_src, flags, tp_type) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
@@ -484,7 +486,7 @@ void Camera::setRunMode(bool playback, bool scope, bool scalers, bool hist) {
 	if (hist)
 		flags |= XSP3_RUN_FLAGS_HIST;
 
-	std::cout << "Camera::setRunMode() " << DEB_VAR4(playback,scope,scalers,hist) << std::endl;
+	DEB_TRACE() << "Camera::setRunMode() " << DEB_VAR4(playback,scope,scalers,hist);
 	if (xsp3_set_run_flags(m_handle, flags) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
@@ -506,8 +508,32 @@ void Camera::getRunMode(bool& playback, bool& scope, bool& scalers, bool& hist) 
 	scope = flags & XSP3_RUN_FLAGS_SCOPE;
 	scalers = flags & XSP3_RUN_FLAGS_SCALERS;
 	hist = flags & XSP3_RUN_FLAGS_HIST;
-	std::cout << "Camera::getRunMode() " << DEB_VAR4(playback,scope,scalers,hist) << std::endl;
+	DEB_TRACE() << "Camera::getRunMode() " << DEB_VAR4(playback,scope,scalers,hist);
 }
+
+/**
+ * Get the number of scalers configured in the system.
+ *
+ * @param[out] nscalers the number of scalers in the xspress3 system.
+ */
+void Camera::getNbScalers(int& nb_scalers) {
+	DEB_MEMBER_FUNCT();
+	nb_scalers = m_nscalers;
+}
+
+/**
+ * Get firmware revision.
+ *
+ * @param[out] revision the firmware revision of the xspress3 system.
+ */
+void Camera::getRevision(int& revision) {
+	DEB_MEMBER_FUNCT();
+	DEB_TRACE() << "Camera::getRevision() ";
+	if ((revision = xsp3_get_revision(m_handle)) < 0) {
+		THROW_HW_ERROR(Error) << xsp3_get_error_message();
+	}
+}
+
 /**
  * Initialise the contents of the BRAM registers.
  *
@@ -516,7 +542,7 @@ void Camera::getRunMode(bool& playback, bool& scope, bool& scalers, bool& hist) 
  */
 void Camera::initBrams(int chan) {
 	DEB_MEMBER_FUNCT();
-	std::cout << "Camera::initBrams() " << DEB_VAR1(chan) << std::endl;
+	DEB_TRACE() << "Camera::initBrams() " << DEB_VAR1(chan);
 	if (xsp3_bram_init(m_handle, chan, -1, -1.0) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
@@ -533,7 +559,7 @@ void Camera::initBrams(int chan) {
  */
 void Camera::setWindow(int chan, int win, int low, int high) {
 	DEB_MEMBER_FUNCT();
-	std::cout << "Camera::setWindow() " << DEB_VAR4(chan,win,low,high) << std::endl;
+	DEB_TRACE() << "Camera::setWindow() " << DEB_VAR4(chan,win,low,high);
 	if (xsp3_set_window(m_handle, chan, win, low, high) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
@@ -553,7 +579,7 @@ void Camera::getWindow(int chan, int win, u_int32_t& low, u_int32_t& high) {
 	if (xsp3_get_window(m_handle, chan, win, &low, &high) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
-	std::cout << "Camera::getWindow() " << DEB_VAR4(chan,win,low,high) << std::endl;
+	DEB_TRACE() << "Camera::getWindow() " << DEB_VAR4(chan,win,low,high);
 }
 
 /**
@@ -568,7 +594,7 @@ void Camera::setScaling(int chan, double scaling) {
 	if (scaling >= 0.0 && (scaling < 0.5 || scaling > 2.0)) {
 		THROW_HW_ERROR(Error) << "# Warning: large magnitude scaling "<< scaling << " on channel " << chan << ", should be 0.5 to 2.0";
 	}
-	std::cout << "Camera::setScaling() " << DEB_VAR2(chan, scaling) << std::endl;
+	DEB_TRACE() << "Camera::setScaling() " << DEB_VAR2(chan, scaling);
 	if (xsp3_bram_init(m_handle, chan, XSP3_REGION_RAM_QUOTIENT, scaling) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
@@ -583,7 +609,7 @@ void Camera::setScaling(int chan, double scaling) {
  */
 void Camera::setGoodThreshold(int chan, int good_thres) {
 	DEB_MEMBER_FUNCT();
-	std::cout << "Camera::setGoodThreshold() " << DEB_VAR2(chan, good_thres) << std::endl;
+	DEB_TRACE() << "Camera::setGoodThreshold() " << DEB_VAR2(chan, good_thres);
 	if (xsp3_set_good_thres(m_handle, chan, good_thres) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
@@ -600,7 +626,7 @@ void Camera::getGoodThreshold(int chan, u_int32_t& good_thres) {
 	if (xsp3_get_good_thres(m_handle, chan, &good_thres) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
-	std::cout << "Camera::getGoodThreshold() " << DEB_VAR2(chan, good_thres) << std::endl;
+	DEB_TRACE() << "Camera::getGoodThreshold() " << DEB_VAR2(chan, good_thres);
 }
 
 /**
@@ -610,7 +636,7 @@ void Camera::getGoodThreshold(int chan, u_int32_t& good_thres) {
  */
 void Camera::saveSettings() {
 	DEB_MEMBER_FUNCT();
-	std::cout << "Camera::saveSettings() " << DEB_VAR1(m_config_directory_name) << std::endl;
+	DEB_TRACE() << "Camera::saveSettings() " << DEB_VAR1(m_config_directory_name);
 	if (xsp3_save_settings(m_handle, (char*) m_config_directory_name.c_str()) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
@@ -624,7 +650,7 @@ void Camera::saveSettings() {
  */
 void Camera::restoreSettings(bool force_mismatch) {
 	DEB_MEMBER_FUNCT();
-	std::cout << "Camera::restoreSettings() " << DEB_VAR2(m_config_directory_name,force_mismatch) << std::endl;
+	DEB_TRACE() << "Camera::restoreSettings() " << DEB_VAR2(m_config_directory_name,force_mismatch);
 	if (xsp3_restore_settings(m_handle, (char*) m_config_directory_name.c_str(), force_mismatch) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
@@ -654,7 +680,7 @@ void Camera::setRinging(int chan, double scale_a, int delay_a, double scale_b, i
  */
 void Camera::setDeadtimeCalculationEnergy(double energy) {
 	DEB_MEMBER_FUNCT();
-	std::cout << "Camera::setDeadtimeCalculationEnergy() " << DEB_VAR1(energy) << std::endl;
+	DEB_TRACE() << "Camera::setDeadtimeCalculationEnergy() " << DEB_VAR1(energy);
 	if (xsp3_setDeadtimeCalculationEnergy(m_handle, energy) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
@@ -693,8 +719,8 @@ void Camera::setDeadtimeCorrectionParameters(int chan, double processDeadTimeAll
 		flags |= XSP3_DTC_OMIT_CHANNEL;
 	if (useGoodEvent)
 		flags |= XSP3_DTC_USE_GOOD_EVENT;
-	std::cout << "Camera::setDeadtimeCorrectionParameters() " << DEB_VAR7(chan,processDeadTimeAllEventGradient,
-			processDeadTimeAllEventOffset,processDeadTimeInWindowOffset,processDeadTimeInWindowGradient,useGoodEvent,omitChannel) << std::endl;
+	DEB_TRACE() << "Camera::setDeadtimeCorrectionParameters() " << DEB_VAR7(chan,processDeadTimeAllEventGradient,
+			processDeadTimeAllEventOffset,processDeadTimeInWindowOffset,processDeadTimeInWindowGradient,useGoodEvent,omitChannel);
 	if (xsp3_setDeadtimeCorrectionParameters(m_handle, chan, flags, processDeadTimeAllEventGradient,
 		processDeadTimeAllEventOffset, processDeadTimeInWindowOffset, processDeadTimeInWindowGradient) < 0){
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
@@ -764,7 +790,7 @@ void Camera::getFanTemperatures(Data& sensorData) {
 	buff->data = sdata;
 	sensorData.setBuffer(buff);
 	buff->unref();
-	std::cout << "returning Data.size() " << sensorData.size() << std::endl;
+	DEB_TRACE() << "returning Data.size() " << sensorData.size();
 }
 
 /**
@@ -944,7 +970,7 @@ void Camera::initRoi(int chan) {
  */
 void Camera::setRoi(int chan, Xsp3Roi& roi, int& nbins) {
 	DEB_MEMBER_FUNCT();
-	std::cout << "Camera::setRoi - " << DEB_VAR2(chan,roi) << std::endl;
+	DEB_TRACE() << "Camera::setRoi - " << DEB_VAR2(chan,roi);
 	int num_roi = roi.getNumRoi();
 	XSP3Roi rois[num_roi];
 	for (int i=0; i<num_roi; i++) {
@@ -993,12 +1019,12 @@ void Camera::readFrame(void *fptr, int frame_nb) {
 	u_int32_t scalerData[m_nscalers*m_nb_chans];
 	u_int32_t* bptr = (u_int32_t*)fptr;
 
-	std::cout << "Camera::readFrame() scalers " << DEB_VAR2(frame_nb, m_nb_chans) << std::endl;
+	DEB_TRACE() << "Camera::readFrame() scalers " << DEB_VAR2(frame_nb, m_nb_chans);
 	if (xsp3_scaler_read(m_handle, scalerData, 0, 0, frame_nb, m_nscalers, m_nb_chans, 1) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
 	for (int chan=0; chan<m_nb_chans; chan++) {
-		std::cout << "Camera::readFrame() histogram " << DEB_VAR3(frame_nb, m_npixels, chan) << std::endl;
+		DEB_TRACE() << "Camera::readFrame() histogram " << DEB_VAR3(frame_nb, m_npixels, chan);
 		if (xsp3_histogram_read3d(m_handle, (u_int32_t*) bptr, 0, chan, frame_nb, m_npixels, 1, 1) < 0) {
 			THROW_HW_ERROR(Error) << xsp3_get_error_message();
 		}
@@ -1035,7 +1061,6 @@ void Camera::readScalers(Data& scalerData, int frame_nb, int channel) {
 	} else {
 		StdBufferCbMgr& buffer_mgr = m_bufferCtrlObj.getBuffer();
 		buffer_mgr.getFrameInfo(frame_nb,frame_info);
-		scalerData.type = Data::UINT32;
 		scalerData.dimensions.push_back(m_nscalers);
 		scalerData.dimensions.push_back(1);
 		scalerData.frameNumber = frame_nb;
@@ -1044,34 +1069,12 @@ void Camera::readScalers(Data& scalerData, int frame_nb, int channel) {
 		u_int32_t *fptr = (u_int32_t*)frame_info.frame_ptr;
 		fptr += channel * (m_npixels + m_nscalers) + m_npixels;
 		if (m_use_dtc) {
-			double *buff = new double[m_nscalers];
-			double *dptr = buff;
-			double dtcFactor;
-			double dtcAllEvent;
-			int flags = 0;
-			if (xsp3_calculateDeadtimeCorrectionFactors(m_handle, fptr, &dtcFactor, &dtcAllEvent, 1, 1) < 0) {
-				THROW_HW_ERROR(Error) << xsp3_get_error_message();
-			}
-			std::cout << "Calculated dead time correction factor " << dtcFactor << " dtc allevent " << dtcAllEvent << std::endl;
 			scalerData.type = Data::DOUBLE;
-			int k;
-			xsp3_getDeadtimeCorrectionFlags(m_handle, channel, &flags);
-			for (k = 0; k < m_nscalers; k++) {
-				if (k == XSP3_SCALER_INWINDOW0 || k == XSP3_SCALER_INWINDOW1) {
-					*dptr++ = (double) *fptr++ * dtcFactor;
-				} else if (k == XSP3_SCALER_ALLEVENT && !(flags & XSP3_DTC_USE_GOOD_EVENT)) {
-					*dptr++ = dtcAllEvent;
-					fptr++;
-				} else if (k == XSP3_SCALER_ALLGOOD && (flags & XSP3_DTC_USE_GOOD_EVENT)) {
-					*dptr++ = dtcAllEvent;
-					fptr++;
-				} else {
-					*dptr++ = (double) *fptr++;
-				}
-
-			}
+			double *buff = new double[m_nscalers];
+			correctScalerData(buff, fptr, channel);
 			fbuf->data = buff;
 		} else {
+			scalerData.type = Data::UINT32;
 			u_int32_t *buff = new u_int32_t[m_nscalers];
 			u_int32_t *bptr = buff;
 			scalerData.type = Data::UINT32;
@@ -1082,6 +1085,32 @@ void Camera::readScalers(Data& scalerData, int frame_nb, int channel) {
 		}
 		scalerData.setBuffer(fbuf);
 		fbuf->unref();
+	}
+}
+
+void Camera::correctScalerData(double* buff, u_int32_t* fptr, int channel) {
+	DEB_MEMBER_FUNCT();
+	double *dptr = buff;
+	double dtcFactor;
+	double dtcAllEvent;
+	int flags = 0;
+	if (xsp3_calculateDeadtimeCorrectionFactors(m_handle, fptr, &dtcFactor, &dtcAllEvent, 1, 1) < 0) {
+		THROW_HW_ERROR(Error) << xsp3_get_error_message();
+	}
+	DEB_TRACE() << "Calculated dead time correction factor " << dtcFactor << " dtc allevent " << dtcAllEvent;
+	xsp3_getDeadtimeCorrectionFlags(m_handle, channel, &flags);
+	for (int k = 0; k < m_nscalers; k++) {
+		if (k == XSP3_SCALER_INWINDOW0 || k == XSP3_SCALER_INWINDOW1) {
+			*dptr++ = (double) *fptr++ * dtcFactor;
+		} else if (k == XSP3_SCALER_ALLEVENT && !(flags & XSP3_DTC_USE_GOOD_EVENT)) {
+			*dptr++ = dtcAllEvent;
+			fptr++;
+		} else if (k == XSP3_SCALER_ALLGOOD && (flags & XSP3_DTC_USE_GOOD_EVENT)) {
+			*dptr++ = dtcAllEvent;
+			fptr++;
+		} else {
+			*dptr++ = (double) *fptr++;
+		}
 	}
 }
 
@@ -1119,7 +1148,6 @@ void Camera::readHistogram(Data& histData, int frame_nb, int channel) {
 			if (xsp3_calculateDeadtimeCorrectionFactors(m_handle, scalerData, &dtcFactor, &dtcAllEvent, 1, 1) < 0) {
 				THROW_HW_ERROR(Error) << xsp3_get_error_message();
 			}
-			std::cout << "Calculate dead time correction factor " << dtcFactor << std::endl;
 			histData.type = Data::DOUBLE;
 			for (int i = 0; i < m_npixels; i++) {
 				*dptr++ = (double) *fptr++ * dtcFactor;
@@ -1165,7 +1193,7 @@ void Camera::setPlayback(bool enable) {
 
 void Camera::loadPlayback(string filename, int src0, int src1, int streams, int digital) {
 	DEB_MEMBER_FUNCT();
-	std::cout << "Camera::loadPlayback() " << DEB_VAR5(filename,src0,src1,streams,digital) << std::endl;
+	DEB_TRACE() << "Camera::loadPlayback() " << DEB_VAR5(filename,src0,src1,streams,digital);
 	if (xsp3_playback_load_x3(m_handle, m_card, (char*)filename.c_str(), src0, src1, streams, digital) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
@@ -1216,7 +1244,7 @@ void Camera::setTiming(int time_src, int first_frame, int alt_ttl_mode, int debo
 	u_int32_t time_a=0;
 	int debounce_val;
 	int alt_ttl;
-	std::cout << "Camera::setTiming() " << DEB_VAR7(time_src,first_frame,alt_ttl_mode,debounce,loop_io,f0_invert,veto_invert) << std::endl;
+	DEB_TRACE() << "Camera::setTiming() " << DEB_VAR7(time_src,first_frame,alt_ttl_mode,debounce,loop_io,f0_invert,veto_invert);
 
 	switch (time_src)
 	{
@@ -1268,10 +1296,10 @@ void Camera::setTiming(int time_src, int first_frame, int alt_ttl_mode, int debo
 		THROW_HW_ERROR(Error) << "Invalid alternate ttl mode for TTL Out";
 	}
 	time_a |= XSP3_GLOB_TIMA_ALT_TTL(alt_ttl);
-	std::cout << "global time_a register " << time_a << std::endl;
+	DEB_TRACE() << "global time_a register " << time_a;
 
 	time_fixed = (first_frame < 0) ? 0 : first_frame;
-	std::cout << "first time frame " << time_fixed << std::endl;
+	DEB_TRACE() << "first time frame " << time_fixed;
 
 	if (xsp3_set_glob_timeA(m_handle, m_card, time_a) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();

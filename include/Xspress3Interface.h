@@ -28,12 +28,51 @@
 #define XSPRESS3INTERFACE_H_
 
 #include "HwInterface.h"
+#include "H5Cpp.h"
 
 namespace lima {
 namespace Xspress3 {
 
 class Interface;
 class Camera;
+
+/*******************************************************************
+ * \class SavingCtrlObj
+ * \brief Control object providing Xspress3 saving interface
+ *******************************************************************/
+
+class SavingCtrlObj: public HwSavingCtrlObj {
+DEB_CLASS_NAMESPC(DebModCamera, "SavingCtrlObj","Xspress3");
+
+public:
+	SavingCtrlObj(Camera& cam);
+	virtual ~SavingCtrlObj();
+
+	virtual void getPossibleSaveFormat(std::list<std::string> &format_list) const;
+	virtual void writeFrame(int frame_nr = -1, int nb_frames = 1);
+	virtual void setCommonHeader(const HeaderMap&);
+
+private:
+	void _prepare();
+	void _close();
+
+	Camera& m_cam;
+	int m_nchan;
+	int m_nscalers;
+	int m_npixels;
+	int m_nframes;
+	H5::H5File m_file;
+	H5::Group m_entry;
+// TODO: change this hardcoded asap!
+	H5::DataSet m_hist_dataset[9];
+	H5::DataSet m_hist_dtc_dataset[9];
+	H5::DataSpace m_hist_dataspace;
+	H5::DataSet m_scaler_dataset[9][8];
+	H5::DataSet m_scaler_dtc_dataset[9][8];
+	H5::DataSpace m_scaler_dataspace;
+
+	bool m_useDTC;
+};
 
 /*******************************************************************
  * \class DetInfoCtrlObj
@@ -121,6 +160,7 @@ private:
 	DetInfoCtrlObj m_det_info;
 	HwBufferCtrlObj*  m_bufferCtrlObj;
 	SyncCtrlObj m_sync;
+	SavingCtrlObj* m_saving;
 };
 
 } // namespace Xspress3

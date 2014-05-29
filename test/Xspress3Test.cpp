@@ -53,15 +53,15 @@ int main(int argc, char *argv[])
 	int nbCards = 1;
 	int maxFrames = 16384;
 	string baseIPaddress= "192.168.0.1";
-	int basePort = 30123;
+	int basePort = -1;
 	string baseMACaddress = "02.00.00.00.00.00";
-	int nbChans = 4;
+	int nbChans = 6;
 	bool createModule = 1;
 	string modname = "gm";
 	int debug = 2;
 	int cardIndex = 0;
 	bool noUDP = 0;
-	string directoryName = "/home/grm84/settings";
+       	string directoryName = "/home/grm84/settings";
 
 	try {
 
@@ -71,46 +71,72 @@ int main(int argc, char *argv[])
 		m_control = new CtControl(m_interface);
 
 		// Setup user timing controls
-		int nframes = 1;
+		int nframes = 3;
 		double m_exp_time = 5.0;
 
 		// setup fileformat and data saving info
 		CtSaving* saving = m_control->saving();
 		saving->setDirectory("/home/grm84/data");
-		saving->setFormat(CtSaving::EDF);
+		saving->setFormat(CtSaving::HDF5);
 	 	saving->setPrefix("xsp3_");
-		saving->setSuffix(".edf");
+		saving->setSuffix(".hdf");
 		saving->setSavingMode(CtSaving::Manual);
+		saving->setManagedMode(CtSaving::Hardware);
 		saving->setFramesPerFile(nframes);
-		saving->setOverwritePolicy(CtSaving::Append);
+		saving->setOverwritePolicy(CtSaving::Overwrite);
 
 		// do acquisition
 		m_camera->setCard(0);
 		m_camera->setDataSource(-1, Camera::PlaybackStream0);
 		m_camera->loadPlayback("/home/grm84/git/Lima/camera/xspress3/test/Zr_mca15_pass0.d16", 0, 0);
 		m_camera->setRunMode(true);
+		m_camera->setUseDtc(true);
+		//		m_camera->setDeadtimeCalculationEnergy(10000);
+		//		m_camera->setDeadtimeCorrectionParameters(-1,2.5304E-9,2.2534E-7, 2.5304E-9,2.2534E-7, true, false);
 
 		m_control->acquisition()->setAcqNbFrames(nframes);
 		m_control->acquisition()->setAcqExpoTime(m_exp_time);
+		m_camera->clear();
+		m_camera->setTiming(0, 0, 0, 100);
 		m_control->prepareAcq();
 		m_control->startAcq();
 
-		struct timespec delay, remain;
+	        struct timespec delay, remain;
 		delay.tv_sec = (int)floor(m_exp_time/10.0);
 		delay.tv_nsec = (int)(1E9*(m_exp_time/10.0-floor(m_exp_time/10.0)));
-		std::cout << "acq thread will sleep for " << m_exp_time/10.0 << " second" << std::endl;
+		DEB_TRACE() << "acq thread will sleep for " << m_exp_time/10.0 << " second";
 		while (m_camera->isAcqRunning()) {
 			delay.tv_sec = (int)floor(m_exp_time/10.0);
 			delay.tv_nsec = (int)(1E9*(m_exp_time/10.0-floor(m_exp_time/10.0)));
-			std::cout << "sleep for " << m_exp_time/10.0 << " second" << std::endl;
+			DEB_TRACE() << "sleep for " << m_exp_time/10.0 << " second";
 			nanosleep(&delay, &remain);
 		}
-//		uint32_t buff[4096];
-//		for (int i=0; i<nframes; i++) {
-//			m_camera->readFrame(buff, i);
-//			cout << buff[0] << " " << buff[1] << " " << buff[2] << " " << buff[1023] << endl;
-//		}
-		cout << "Finished" << endl;
+		DEB_TRACE() << "Finished collection 1";
+
+		nframes = 2;
+		m_exp_time = 1.0;
+
+		long num;
+		saving->getNextNumber(num);
+		saving->setNextNumber(++num);
+		m_control->acquisition()->setAcqNbFrames(nframes);
+		m_control->acquisition()->setAcqExpoTime(m_exp_time);
+		m_camera->clear();
+		m_camera->setTiming(0, 0, 0, 100);
+		m_control->prepareAcq();
+		m_control->startAcq();
+
+		delay.tv_sec = (int)floor(m_exp_time/10.0);
+		delay.tv_nsec = (int)(1E9*(m_exp_time/10.0-floor(m_exp_time/10.0)));
+		DEB_TRACE() << "acq thread will sleep for " << m_exp_time/10.0 << " second";
+		while (m_camera->isAcqRunning()) {
+			delay.tv_sec = (int)floor(m_exp_time/10.0);
+			delay.tv_nsec = (int)(1E9*(m_exp_time/10.0-floor(m_exp_time/10.0)));
+			DEB_TRACE()<< "sleep for " << m_exp_time/10.0 << " second";
+			nanosleep(&delay, &remain);
+		}
+
+		DEB_TRACE() << "Finished collection 2";
 
 	} catch (Exception& ex) {
 		DEB_ERROR() << "LIMA Exception: " << ex;

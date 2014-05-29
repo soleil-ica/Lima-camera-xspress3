@@ -73,6 +73,9 @@ namespace Xspress3
 	// -- Buffer control object
 	HwBufferCtrlObj* getBufferCtrlObj();
 
+	// -- Buffer control object
+	//SavingCtrlObj* getSavingCtrlObj();
+
 	//-- Synch control object
 	void setTrigMode(TrigMode mode);
 	void getTrigMode(TrigMode& mode /Out/);
@@ -99,6 +102,8 @@ namespace Xspress3
 	void setupClocks(int clk_src, int flags, int tp_type=0);
 	void setRunMode(bool playback=false, bool scope=false, bool scalers=true, bool hist=true);
 	void getRunMode(bool& playback /Out/, bool& scope /Out/, bool& scalers /Out/, bool& hist /Out/);
+	void getNbScalers(int& nscalers /Out/);
+	void getRevision(int& revision /Out/);
 	void initBrams(int chan);
 	void setWindow(int chan, int win, int low, int high);
 	void getWindow(int chan, int win, unsigned int& low /Out/, unsigned int& high /Out/);
