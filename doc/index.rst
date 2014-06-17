@@ -1,3 +1,5 @@
+.. _camera-xspress3:
+
 Xspress3
 -------
 
