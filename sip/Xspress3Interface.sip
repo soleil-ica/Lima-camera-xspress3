@@ -33,7 +33,7 @@ namespace Xspress3
 %End
 
   public:
-	Interface(Xspress3::Camera& cam);
+	Interface(Xspress3::Camera& cam /KeepReference/);
 	virtual ~Interface();
 
  	virtual void getCapList(std::vector<HwCap> &cap_list /Out/) const;
