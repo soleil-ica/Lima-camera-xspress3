@@ -39,6 +39,7 @@
 #include "Debug.h"
 #include "Data.h"
 #include "xspress3.h"
+#include "Xspress3Interface.h"
 
 using namespace std;
 
@@ -49,6 +50,7 @@ const int xPixelSize = 1;
 const int yPixelSize = 1;
 
 class BufferCtrlObj;
+class SavingCtrlObj;
 
 /*******************************************************************
  * \class Camera
@@ -105,6 +107,9 @@ public:
 	// -- Buffer control object
 	HwBufferCtrlObj* getBufferCtrlObj();
 
+	// -- Saving control object
+	SavingCtrlObj* getSavingCtrlObj();
+
 	//-- Synch control object
 	void setTrigMode(TrigMode mode);
 	void getTrigMode(TrigMode& mode);
@@ -130,6 +135,8 @@ public:
 	void setupClocks(int clk_src, int flags, int tp_type=0);
 	void setRunMode(bool playback=false, bool scope=false, bool scalers=true, bool hist=true);
 	void getRunMode(bool& playback, bool& scope, bool& scalers, bool& hist);
+	void getNbScalers(int& nscalers);
+	void getRevision(int& revision);
 	void initBrams(int chan);
 	void setWindow(int chan, int win, int low, int high);
 	void getWindow(int chan, int win, u_int32_t& low, u_int32_t& high);
@@ -170,6 +177,7 @@ public:
 	void setUseDtc(bool flag);
 	void readScalers(Data& temp, int frame_nb, int channel=-1);
 	void readHistogram(Data& temp, int frame_nb, int channel=-1);
+	void correctScalerData(double* buff, u_int32_t* fptr, int channel);
 	void setAdcTempLimit(int temp);
 	void setPlayback(bool enable);
 	void loadPlayback(string filename, int src0, int src1, int streams=0, int digital=0);
@@ -205,8 +213,8 @@ private:
 	int m_card;
 
 	// Lima
-	AcqThread *m_acq_thread;
-	ReadThread *m_read_thread;
+	AcqThread *m_acq_thread;   // Thread to handle data acquisition
+	ReadThread *m_read_thread; // Thread to handle reading the data into the Lima buffers and writing the output file
 	TrigMode m_trigger_mode;
 	double m_exp_time;
 	ImageType m_image_type;
@@ -221,6 +229,7 @@ private:
 
 	// Buffer control object
 	SoftBufferCtrlObj m_bufferCtrlObj;
+	SavingCtrlObj m_savingCtrlObj;
 
 	void readFrame(void* ptr, int frame_nb);
 };

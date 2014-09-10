@@ -20,7 +20,7 @@
 # along with this program; if not, see <http://www.gnu.org/licenses/>.
 ############################################################################
 
-xspress3-objs := Xspress3Camera.o Xspress3Interface.o Xspress3DetInfoCtrlObj.o Xspress3SyncCtrlObj.o 
+xspress3-objs := Xspress3Camera.o Xspress3Interface.o Xspress3DetInfoCtrlObj.o Xspress3SyncCtrlObj.o Xspress3SavingCtrlObj.o
 
 SRCS = $(xspress3-objs:.o=.cpp)
 
@@ -32,6 +32,11 @@ INCLUDES = -I../include \
 	       -I../../../third-party/Processlib/core/include
 
 CXXFLAGS += $(INCLUDES) -fPIC -Wall -pthread
+
+ifneq ($(COMPILE_HDF5_SAVING),0)
+INCLUDES += -I../../../third-party/hdf5-1.8.12/include
+CXXFLAGS += -DWITH_HDF5_SAVING
+endif
 
 all: Xspress3.o
 
@@ -49,3 +54,7 @@ clean:
 	rm -f $*.d
 
 -include $(SRCS:.cpp=.P)
+
+.PHONY: check-syntax
+check-syntax:
+	$(CXX) -Wall -Wextra -fsyntax-only $(CXXFLAGS) $(CHK_SOURCES)
