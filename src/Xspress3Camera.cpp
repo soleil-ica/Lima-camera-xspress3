@@ -25,8 +25,8 @@
 // Author: g.r.mant
 
 #include "Xspress3Camera.h"
-#include "Exceptions.h"
-#include "Debug.h"
+#include "lima/Exceptions.h"
+#include "lima/Debug.h"
 #include "Xspress3Interface.h"
 
 using namespace lima;
