@@ -56,8 +56,6 @@ protected:
 
 private:
 	Camera& m_cam;
-	StdBufferCbMgr& buffer_mgr;
-	SavingCtrlObj& saving;
 };
 
 //---------------------------
@@ -80,7 +78,7 @@ Camera::Camera(int nbCards, int maxFrames, string baseIPaddress, int basePort, s
 	m_read_thread->start();
 	m_clear_flag = true;
 	m_exp_time = 0.0;
-//	init();
+	init();
 }
 
 Camera::~Camera() {
@@ -284,8 +282,6 @@ void Camera::AcqThread::threadFunction() {
 
 Camera::AcqThread::AcqThread(Camera& cam) : m_cam(cam) {
 	AutoMutex aLock(m_cam.m_cond.mutex());
-	StdBufferCbMgr& buffer_mgr = m_cam.m_bufferCtrlObj.getBuffer();
-	SavingCtrlObj& saving = m_cam.m_savingCtrlObj;
 	m_cam.m_wait_flag = true;
 	m_cam.m_quit = false;
 	aLock.unlock();
@@ -302,8 +298,8 @@ Camera::AcqThread::~AcqThread() {
 void Camera::ReadThread::threadFunction() {
 	DEB_MEMBER_FUNCT();
 	AutoMutex aLock(m_cam.m_cond.mutex());
-//	StdBufferCbMgr& buffer_mgr = m_cam.m_bufferCtrlObj.getBuffer();
-//	SavingCtrlObj& saving = m_cam.m_savingCtrlObj;
+	StdBufferCbMgr& buffer_mgr = m_cam.m_bufferCtrlObj.getBuffer();
+	SavingCtrlObj& saving = m_cam.m_savingCtrlObj;
 
 	while (!m_cam.m_quit) {
 		while (m_cam.m_read_wait_flag && !m_cam.m_quit) {
