@@ -34,127 +34,47 @@ using namespace std;
 using namespace H5;
 
 // TODO: get these from the library as these should match m_nscalers == XSP3_SW_NUM_SCALERS!
-const string names[] =
-		{ "Time", "ResetTicks", "ResetCount", "AllEvent", "AllGood", "InWindow0", "InWindow1", "PileUp" };
+static const string names[] =
+  { "Time", "ResetTicks", "ResetCount", "AllEvent", "AllGood", "InWindow0", "InWindow1", "PileUp", "TotalTicks" };
 static const char DIR_SEPARATOR = '/';
-const int RANK_ONE = 1;
-const int RANK_TWO = 2;
+static const int RANK_ONE = 1;
+static const int RANK_TWO = 2;
+
+/* Static function helper*/
+DataType get_h5_type(unsigned char)		{return PredType(PredType::NATIVE_UINT8);}
+DataType get_h5_type(char)			{return PredType(PredType::NATIVE_INT8);}
+DataType get_h5_type(unsigned short)		{return PredType(PredType::NATIVE_UINT16);}
+DataType get_h5_type(short)			{return PredType(PredType::NATIVE_INT16);}
+DataType get_h5_type(unsigned int)		{return PredType(PredType::NATIVE_UINT32);}
+DataType get_h5_type(int)			{return PredType(PredType::NATIVE_INT32);}
+DataType get_h5_type(unsigned long long)	{return PredType(PredType::NATIVE_UINT64);}
+DataType get_h5_type(long long)			{return PredType(PredType::NATIVE_INT64);}
+DataType get_h5_type(float)			{return PredType(PredType::NATIVE_FLOAT);}
+DataType get_h5_type(double)			{return PredType(PredType::NATIVE_DOUBLE);}
+DataType get_h5_type(std::string& s)            {return StrType(H5T_C_S1, s.size());}
+DataType get_h5_type(bool)			{return PredType(PredType::NATIVE_UINT8);}
+
+template <class T>
+void write_h5_dataset(Group group, const char* entry_name, T& val) {
+       DataSpace dataspace(H5S_SCALAR);
+       DataType datatype = get_h5_type(val);
+       DataSet dataset(group.createDataSet(entry_name,datatype, dataspace));
+       dataset.write(&val, datatype);
+}
+
+template <>
+void write_h5_dataset(Group group, const char* entry_name, std::string& val) {
+       DataSpace dataspace(H5S_SCALAR);
+       DataType datatype = get_h5_type(val);
+       DataSet dataset(group.createDataSet(entry_name,datatype, dataspace));
+       dataset.write(val.c_str(), datatype);
+}
 
 SavingCtrlObj::SavingCtrlObj(Camera& camera) :
 		HwSavingCtrlObj(HwSavingCtrlObj::COMMON_HEADER | HwSavingCtrlObj::MANUAL_WRITE), m_cam(camera) {
 }
 
 SavingCtrlObj::~SavingCtrlObj() {
-}
-
-void SavingCtrlObj::getPossibleSaveFormat(std::list<std::string> &format_list) const {
-	DEB_MEMBER_FUNCT();
-	format_list.push_back(HwSavingCtrlObj::HDF5_FORMAT_STR);
-}
-
-void SavingCtrlObj::writeFrame(int frame_nr, int nb_frames) {
-	DEB_MEMBER_FUNCT();
-	HwFrameInfo frame_info;
-
-	HwBufferCtrlObj* m_bufferCtrlObj = m_cam.getBufferCtrlObj();
-	m_bufferCtrlObj->getFrameInfo(frame_nr, frame_info);
-	float hist_fdata[m_npixels];
-	double scaler_dtc_data[m_nscalers];
-
-	DEB_TRACE() << "writing frame number " << DEB_VAR2(frame_nr, nb_frames);
-	for (int i = 0; i < m_nchan; i++) {
-		int l = frame_nr * 4096;
-		for (int k = 0; k < 4096; k++) {
-			hist_fdata[k] = (float) l++;
-		}
-		u_int32_t *fptr = (u_int32_t*)frame_info.frame_ptr;
-		fptr += i * (m_npixels + m_nscalers) + m_npixels;
-		m_cam.correctScalerData(scaler_dtc_data, fptr, i);
-		for (int k = 0; k < m_nscalers; k++) {
-			hsize_t slab_dim[] = {1}; // frames in slab
-			DataSpace slabspace = DataSpace(RANK_ONE, slab_dim);
-			hsize_t offset[] = {frame_nr};
-			hsize_t count[] = {1};
-			m_scaler_dataspace.selectHyperslab(H5S_SELECT_SET, count, offset);
-			m_scaler_dataset[i][k].write(fptr+k, PredType::NATIVE_UINT32, slabspace, m_scaler_dataspace);
-			if (m_useDTC) {
-				m_scaler_dataspace.selectHyperslab(H5S_SELECT_SET, count, offset);
-				m_scaler_dtc_dataset[i][k].write(scaler_dtc_data, PredType::NATIVE_DOUBLE, slabspace, m_scaler_dataspace);
-			}
-		}
-		{
-			u_int32_t *fptr = (u_int32_t*) frame_info.frame_ptr;
-			fptr += i * (m_npixels + m_nscalers);
-			// write the histogram and optionally the dead time corrected data
-			hsize_t slab_dim[2];
-			slab_dim[1] = m_npixels; // pixels in slab
-			slab_dim[0] = 1; // frames in slab
-			DataSpace slabspace = DataSpace(RANK_TWO, slab_dim);
-
-			hsize_t offset[] = { frame_nr, 0 };
-			hsize_t count[] = { 1, m_npixels };
-			m_hist_dataspace.selectHyperslab(H5S_SELECT_SET, count, offset);
-			m_hist_dataset[i].write(fptr, PredType::NATIVE_UINT32, slabspace, m_hist_dataspace);
-			if (m_useDTC) {
-				m_hist_dataspace.selectHyperslab(H5S_SELECT_SET, count, offset);
-				m_hist_dtc_dataset[i].write(hist_fdata, PredType::NATIVE_FLOAT, slabspace, m_hist_dataspace);
-			}
-		}
-	}
-	if (frame_nr == m_nframes-1) {
-		_close();
-	}
-}
-
-void SavingCtrlObj::setCommonHeader(const HeaderMap& headerMap) {
-	DEB_MEMBER_FUNCT();
-
-	if (!headerMap.empty()) {
-		Group header = Group(m_entry.createGroup("Header"));
-		for (map<string, string>::const_iterator it = headerMap.begin(); it != headerMap.end(); it++) {
-
-			string key = it->first;
-			string value = it->second;
-			hsize_t strdim[] = { 1 }; /* Dataspace dimensions */
-			DataSpace dataspace(RANK_ONE, strdim);
-			StrType datatype(H5T_C_S1, value.size());
-			DataSet dataset = DataSet(header.createDataSet(key, datatype, dataspace));
-			dataset.write(value, datatype);
-		}
-	}
-}
-void SavingCtrlObj::_close() {
-	DEB_MEMBER_FUNCT();
-	{
-		Group data = Group(m_entry.createGroup("Data"));
-		// Create hard link to the Data group.
-		for (int i = 0; i < m_nchan; i++) {
-			stringstream ss, ss2;
-			ss << "channel_";
-			(i < 10) ? ss << "0" << i : ss << i;
-			if (m_useDTC) {
-				ss2 << "/Entry/Instrument/Xspress3/" << ss.str() << "/histogram-dtc";
-			} else {
-				ss2 << "/Entry/Instrument/Xspress3/" << ss.str() << "/histogram";
-			}
-			data.link(H5L_TYPE_HARD, ss2.str(), ss.str());
-		}
-	}
-	{
-		// ISO 8601 Time format
-		time_t now;
-		time(&now);
-		char buf[sizeof("2011-10-08T07:07:09Z")];
-		strftime(buf, sizeof(buf), "%FT%TZ", gmtime(&now));
-		string etime = string(buf);
-		hsize_t strdim[] = {1}; /* Dataspace dimensions */
-		DataSpace dataspace(RANK_ONE, strdim);
-		StrType datatype(H5T_C_S1, etime.size());
-		DataSet dataset = DataSet(m_entry.createDataSet("end_time", datatype, dataspace));
-		dataset.write(etime, datatype);
-	}
-	m_file.close();
-	stop();
 }
 
 void SavingCtrlObj::_prepare() {
@@ -169,23 +89,39 @@ void SavingCtrlObj::_prepare() {
 		// Turn off the auto-printing when failure occurs so that we can
 		// handle the errors appropriately
 		H5::Exception::dontPrint();
+		
+
+
+		
 
 		// Get the fully qualified filename
 		char number[16];
-		snprintf(number, sizeof(number), m_index_format.c_str(), m_next_number);
-		filename = m_directory + DIR_SEPARATOR + m_prefix + number + m_suffix;
+			  snprintf(number, sizeof(number), m_index_format.c_str(), m_next_number);
+			  filename = m_directory + DIR_SEPARATOR + m_prefix + number + m_suffix;
+			  DEB_TRACE() << "Opening filename " << filename << " with overwritePolicy " << m_overwritePolicy;
+		
+			  if (m_overwritePolicy == string("Overwrite")) {
+			  // overwrite existing file
+			  m_file = new H5File(filename, H5F_ACC_TRUNC);
+			  } else if (m_overwritePolicy == string("Abort")) {
+			        // fail if file already exists
+				m_file = new H5File(filename, H5F_ACC_EXCL);
+			} else {
+			     THROW_CTL_ERROR(Error) << "Append and multiset  not supported !" ;
+			}
+			//		m_file = new H5File(filename, H5F_ACC_TRUNC);
 
-		H5File file = H5File(filename, H5F_ACC_TRUNC);
-
-		// Create the root group in the file
-		m_entry = Group(file.createGroup("/Entry"));
+	        m_entry = new Group(m_file->createGroup("/entry"));
+		
 		m_cam.getUseDtc(m_useDTC);
+		DEB_TRACE() << DEB_VAR1(m_useDTC);
 		Size size;
 		m_cam.getDetectorImageSize(size);
 		m_nchan = size.getHeight();
 		m_cam.getNbScalers(m_nscalers);
 		m_npixels = size.getWidth() - m_nscalers;
 		m_cam.getNbFrames(m_nframes);
+		
 		{
 			// ISO 8601 Time format
 			time_t now;
@@ -193,75 +129,77 @@ void SavingCtrlObj::_prepare() {
 			char buf[sizeof("2011-10-08T07:07:09Z")];
 			strftime(buf, sizeof(buf), "%FT%TZ", gmtime(&now));
 			string stime = string(buf);
-			hsize_t strdim[] = { 1 }; /* Dataspace dimensions */
-			DataSpace dataspace(RANK_ONE, strdim);
-			StrType datatype(H5T_C_S1, stime.size());
-			DataSet dataset = DataSet(m_entry.createDataSet("start_time", datatype, dataspace));
-			dataset.write(stime, datatype);
+			write_h5_dataset(*m_entry, "start_time", stime);
 		}
-		Group instrument = Group(m_entry.createGroup("Instrument"));
+		
+		Group instrument = Group(m_entry->createGroup("Instrument"));
 		Group detector = Group(instrument.createGroup("Xspress3"));
 		{
 			// write the firmware version
 			int revision;
 			m_cam.getRevision(revision);
+			//			DEB_TRACE() << "write thefirmware version " << DEB_VAR1(revision);
 			stringstream ss;
 			ss << revision;
 			string version = ss.str();;
-			hsize_t strdim[] = { 1 }; /* Dataspace dimensions */
-			DataSpace dataspace(RANK_ONE, strdim);
-			StrType datatype(H5T_C_S1, version.size());
-			DataSet dataset = DataSet(detector.createDataSet("firmware-version", datatype, dataspace));
-			dataset.write(version, datatype);
+			write_h5_dataset(detector, "firmware-version", version);
 		}
+		
 		{
 			// write the dtc correction energy
 			if (m_useDTC) {
 				double dtc_energy;
 				m_cam.getDeadtimeCalculationEnergy(dtc_energy);
+				//				DEB_TRACE() << "write the dtc correction energy " << DEB_VAR1(dtc_energy);
 				stringstream ss;
 				ss << dtc_energy;
 				string energy = ss.str();
-				hsize_t strdim[] = { 1 }; /* Dataspace dimensions */
-				DataSpace dataspace(RANK_ONE, strdim);
-				StrType datatype(H5T_C_S1, energy.size());
-				DataSet dataset = DataSet(detector.createDataSet("dtc-correction-energy", datatype, dataspace));
-				dataset.write(energy, datatype);
+				write_h5_dataset(detector, "dtc-correction-energy""dtc-correction-energy", energy);
 			}
-		}
+	       	}
+		
 		// create the scaler data structure in the file
+		m_scaler_dataset = new DataSet[m_nchan*m_nscalers];
+		m_scaler_dtc_dataset = new DataSet[m_nchan*m_nscalers];
+		m_hist_dataset = new DataSet[m_nchan];
+		m_hist_dtc_dataset = new DataSet[m_nchan];
 		for (int i = 0; i < m_nchan; i++) {
+		  //		  DEB_TRACE() << "Create the scaler data structure in the file for channel " << i;
 			stringstream ss;
 			ss << "channel_";
 			(i < 10) ? ss << "0" << i : ss << i;
 			Group group = Group(detector.createGroup(ss.str()));
-			Group scaler1 = Group(group.createGroup("scaler"));
-			Group scaler2;
+			Group scaler  = Group(group.createGroup("scaler"));
+			Group scaler_dtc;
 			if (m_useDTC) {
-				scaler2 = Group(group.createGroup("scaler-dtc"));
+				scaler_dtc = Group(group.createGroup("scaler-dtc"));
 			}
+			
 			hsize_t data_dim[] = {m_nframes}; // nframes
-			m_scaler_dataspace = DataSpace(RANK_ONE, data_dim); // create new dspace
-
+			//			DEB_TRACE() << DEB_VAR1(m_nframes);
+			m_scaler_dataspace = new DataSpace(RANK_ONE, data_dim); // create new dspace	
+			//			DEB_TRACE() << DEB_VAR1(m_nscalers);
 			for (int k = 0; k < m_nscalers; k++) {
-				m_scaler_dataset[i][k] = DataSet(scaler1.createDataSet(names[k], PredType::NATIVE_INT, m_scaler_dataspace));
-				if (m_useDTC) {
-					m_scaler_dtc_dataset[i][k] = DataSet(scaler2.createDataSet(names[k], PredType::NATIVE_FLOAT, m_scaler_dataspace));
-				}
+				m_scaler_dataset[i*m_nchan+k] = DataSet(scaler.createDataSet(names[k], PredType::NATIVE_INT, *m_scaler_dataspace));
 			}
-
+		       	if (m_useDTC) {
+			    for (int k = 0; k < m_nscalers; k++) {
+			       	m_scaler_dtc_dataset[i*m_nchan+k] = DataSet(scaler_dtc.createDataSet(names[k], PredType::NATIVE_FLOAT, *m_scaler_dataspace));
+			    }
+			}		  	
+			//			DEB_TRACE() << "create the histogram data structure in the file for channel " << i;
 			// create the histogram data structure in the file
 			hsize_t data_dims[2];
 			data_dims[1] = m_npixels; // pixels
 			data_dims[0] = m_nframes; // total frames
-			m_hist_dataspace = DataSpace(RANK_TWO, data_dims); // create new dspace
-			m_hist_dataset[i] = DataSet(group.createDataSet("histogram", PredType::NATIVE_INT, m_hist_dataspace));
+			m_hist_dataspace = new DataSpace(RANK_TWO, data_dims); // create new dspace
+			m_hist_dataset[i] = DataSet(group.createDataSet("histogram", PredType::NATIVE_INT, *m_hist_dataspace));
 			if (m_useDTC) {
-				m_hist_dtc_dataset[i] = DataSet(group.createDataSet("histogram-dtc", PredType::NATIVE_FLOAT, m_hist_dataspace));
+				m_hist_dtc_dataset[i] = DataSet(group.createDataSet("histogram-dtc", PredType::NATIVE_FLOAT, *m_hist_dataspace));
 			}
-
 			// write the dead time correction parameters
 			if (m_useDTC) {
+			  //			  DEB_TRACE() << "write the dead time correction parameters for channel " << i;
 				double processDeadTimeAllEventGradient;
 				double processDeadTimeAllEventOffset;
 				double processDeadTimeInWindowOffset;
@@ -287,8 +225,8 @@ void SavingCtrlObj::_prepare() {
 				dataset = DataSet(
 						dtc.createDataSet("processDeadTimeInWindowGradient", PredType::NATIVE_DOUBLE, dataspace));
 				dataset.write(&processDeadTimeInWindowGradient, PredType::NATIVE_DOUBLE);
-			}
-		}
+		       	}
+	       	}		
 	} catch (FileIException &error) {
 		THROW_CTL_ERROR(Error) << "File " << filename << " not opened successfully";
 	}
@@ -308,5 +246,122 @@ void SavingCtrlObj::_prepare() {
 	// catch anything not hdf5 related
 	catch (Exception &e) {
 		THROW_CTL_ERROR(Error) << e.getErrMsg();
+	}
+}
+
+void SavingCtrlObj::_close() {
+	DEB_MEMBER_FUNCT();
+
+	{
+	 
+	  		Group data = Group(m_entry->createGroup("Data"));
+		// Create hard link to the Data group.
+	       		for (int i = 0; i < m_nchan; i++) {
+	       			stringstream ss, ss2;
+	       			ss << "channel_";
+	       			(i < 10) ? ss << "0" << i : ss << i;
+	       			if (m_useDTC) {
+	       				ss2 << "/entry/Instrument/Xspress3/" << ss.str() << "/histogram-dtc";
+	       			} else {
+	       				ss2 << "/entry/Instrument/Xspress3/" << ss.str() << "/histogram";
+	       			}
+	       			data.link(H5L_TYPE_HARD, ss2.str(), ss.str());
+	       		}
+			}
+	{
+		// ISO 8601 Time format
+		time_t now;
+		time(&now);
+		char buf[sizeof("2011-10-08T07:07:09Z")];
+		strftime(buf, sizeof(buf), "%FT%TZ", gmtime(&now));
+		string etime = string(buf);
+		write_h5_dataset(*m_entry, "end_time", etime);
+	}
+     
+	m_file->close();
+	stop();
+	delete m_hist_dataspace;
+      	delete m_scaler_dataspace;
+       	delete [] m_hist_dtc_dataset;
+       	delete [] m_hist_dataset;
+       	delete [] m_scaler_dtc_dataset;
+       	delete [] m_scaler_dataset;
+	delete m_entry;
+	delete m_file;
+}
+
+void SavingCtrlObj::getPossibleSaveFormat(std::list<std::string> &format_list) const {
+	DEB_MEMBER_FUNCT();
+	format_list.push_back(HwSavingCtrlObj::HDF5_FORMAT_STR);
+}
+
+void SavingCtrlObj::writeFrame(int frame_nr, int nb_frames) {
+	DEB_MEMBER_FUNCT();
+	HwFrameInfo frame_info;
+	
+	HwBufferCtrlObj* m_bufferCtrlObj = m_cam.getBufferCtrlObj();
+	m_bufferCtrlObj->getFrameInfo(frame_nr, frame_info);
+	float hist_dtc_data[m_npixels];
+	double scaler_dtc_data[m_nscalers];
+	double dtcFactor;
+	
+	DEB_TRACE() << "writing frame number " << DEB_VAR2(frame_nr, nb_frames);
+	for (int i = 0; i < m_nchan; i++) {
+		u_int32_t *scaler_data = (u_int32_t*) frame_info.frame_ptr;
+		scaler_data += i * (m_npixels + m_nscalers) + m_npixels;
+		if (m_useDTC) {
+		  m_cam.correctScalerData(scaler_dtc_data, scaler_data, i, dtcFactor);
+	        }
+		for (int k = 0; k < m_nscalers; k++) {
+			hsize_t slab_dim[] = {1}; // frames in slab
+			DataSpace slabspace = DataSpace(RANK_ONE, slab_dim);
+			hsize_t offset[] = {frame_nr};
+			hsize_t count[] = {1};
+			m_scaler_dataspace->selectHyperslab(H5S_SELECT_SET, count, offset);
+			m_scaler_dataset[i*m_nchan+k].write(scaler_data+k, PredType::NATIVE_UINT32, slabspace, *m_scaler_dataspace);
+			if (m_useDTC) {
+				m_scaler_dataspace->selectHyperslab(H5S_SELECT_SET, count, offset);
+				m_scaler_dtc_dataset[i*m_nchan+k].write(scaler_dtc_data+k, PredType::NATIVE_DOUBLE, slabspace, *m_scaler_dataspace);
+			}
+			}
+				
+		{
+		  DEB_TRACE() << "writing histogram data ";
+		        u_int32_t *hist_data = (u_int32_t*) frame_info.frame_ptr;
+		        hist_data += i * (m_npixels + m_nscalers);
+			// write the histogram and optionally the dead time corrected data
+			hsize_t slab_dim[2];
+			slab_dim[1] = m_npixels; // pixels in slab
+			slab_dim[0] = 1; // frames in slab
+			DataSpace slabspace = DataSpace(RANK_TWO, slab_dim);
+
+			hsize_t offset[] = { frame_nr, 0 };
+			hsize_t count[] = { 1, m_npixels };
+			m_hist_dataspace->selectHyperslab(H5S_SELECT_SET, count, offset);
+			m_hist_dataset[i].write(hist_data, PredType::NATIVE_UINT32, slabspace, *m_hist_dataspace);
+			if (m_useDTC) {
+			  for (int j=0; j < m_npixels; j++) {
+			    hist_dtc_data[j] = hist_data[j] * dtcFactor;
+			  }
+				m_hist_dataspace->selectHyperslab(H5S_SELECT_SET, count, offset);
+				m_hist_dtc_dataset[i].write(hist_dtc_data, PredType::NATIVE_FLOAT, slabspace, *m_hist_dataspace);
+			}
+		}	
+	}
+	if (frame_nr == m_nframes-1) {
+		_close();
+		}
+}
+
+void SavingCtrlObj::setCommonHeader(const HeaderMap& headerMap) {
+	DEB_MEMBER_FUNCT();
+	
+	if (!headerMap.empty()) {
+		Group header = Group(m_entry->createGroup("Header"));
+		for (map<string, string>::const_iterator it = headerMap.begin(); it != headerMap.end(); it++) {
+			string key = it->first;
+			string value = it->second;
+			write_h5_dataset(header, key.c_str(), value);
+		}
 	}
 }

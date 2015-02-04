@@ -38,7 +38,7 @@ int main() {
 	 */
 		Exception::dontPrint();
 
-		H5File file = H5File("/home/grm84/test.hdf", H5F_ACC_TRUNC);
+		H5File file = H5File("/home/xspress3/esrf/gmdata/test.hdf", H5F_ACC_TRUNC);
 
 		/*
 		 * Create a group in the file

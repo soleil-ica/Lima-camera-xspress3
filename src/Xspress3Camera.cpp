@@ -60,6 +60,8 @@ protected:
 
 private:
 	Camera& m_cam;
+	StdBufferCbMgr& buffer_mgr;
+	SavingCtrlObj& saving;
 };
 
 //---------------------------
@@ -80,7 +82,9 @@ Camera::Camera(int nbCards, int maxFrames, string baseIPaddress, int basePort, s
 	m_acq_thread->start();
 	m_read_thread = new ReadThread(*this);
 	m_read_thread->start();
-	init();
+	m_clear_flag = true;
+	m_exp_time = 0.0;
+//	init();
 }
 
 Camera::~Camera() {
@@ -108,10 +112,13 @@ void Camera::init() {
 	DEB_TRACE() << "Set up clock register to use ADC clock...";
 	// the first card is the master clock
 	setCard(0);
-	setupClocks(XSP3_CLK_SRC_XTAL, XSP3_CLK_FLAGS_MASTER | XSP3_CLK_FLAGS_DITHER, 0);
+	setupClocks(Camera::XtalClk, Camera::Master | Camera::NoDither, 0);
+	//	setupClocks(XSP3_CLK_SRC_XTAL, XSP3_CLK_FLAGS_MASTER | XSP3_CLK_FLAGS_NO_DITHER, 0);
+	//       	setupClocks(XSP3_CLK_SRC_INT, XSP3_CLK_FLAGS_MASTER | XSP3_CLK_FLAGS_NO_DITHER, 0);
 	for (int i=1; i<m_nb_cards; i++) {
 		setCard(i);
-		setupClocks(XSP3_CLK_SRC_EXT, XSP3_CLK_FLAGS_DITHER, 0);
+		setupClocks(Camera::ExtClk, Camera::NoDither, 0);
+//		setupClocks(XSP3_CLK_SRC_EXT, XSP3_CLK_FLAGS_NO_DITHER, 0);
 	}
 	setCard(-1);
 	if (m_config_directory_name != "") {
@@ -134,12 +141,18 @@ void Camera::reset() {
 
 void Camera::prepareAcq() {
 	DEB_MEMBER_FUNCT();
+	if (m_clear_flag) {
+	  DEB_TRACE() << "Clear memory " << DEB_VAR2(m_nb_chans, m_nb_frames);
+	  if (xsp3_histogram_clear(m_handle, 0, m_nb_chans, 0, m_nb_frames) < 0) {
+	    THROW_HW_ERROR(Error) << xsp3_get_error_message();
+	  }
+	}
 }
 
 void Camera::startAcq() {
 	DEB_MEMBER_FUNCT();
-	m_acq_frame_nb = 0;
-	m_read_frame_nb = 0;
+	m_acq_frame_nb = 0; // Number of frames of data acquired;
+	m_read_frame_nb = 0; // Number of frames read into Lima buffers
 	StdBufferCbMgr& buffer_mgr = m_bufferCtrlObj.getBuffer();
 	buffer_mgr.setStartTimestamp(Timestamp::now());
 	if (xsp3_histogram_start(m_handle, m_card) < 0) {
@@ -150,8 +163,8 @@ void Camera::startAcq() {
 	m_quit = false;
 	m_cond.broadcast();
 	// Wait that Acq thread start if it's an external trigger
-	while (m_trigger_mode == ExtTrigMult && !m_thread_running)
-		m_cond.wait();
+	//	while (m_trigger_mode == ExtGate && !m_thread_running)
+	//	m_cond.wait();
 }
 
 void Camera::stopAcq() {
@@ -196,6 +209,9 @@ void Camera::AcqThread::threadFunction() {
 
 		bool continueFlag = true;
 		while (continueFlag && (!m_cam.m_nb_frames || m_cam.m_acq_frame_nb < m_cam.m_nb_frames)) {
+		  DEB_TRACE() << DEB_VAR1(m_cam.m_trigger_mode);
+		  if (m_cam.m_trigger_mode == IntTrig) {
+		  
 			struct timespec delay, remain;
 			delay.tv_sec = (int)floor(m_cam.m_exp_time);
 			delay.tv_nsec = (int)(1E9*(m_cam.m_exp_time-floor(m_cam.m_exp_time)));
@@ -222,10 +238,41 @@ void Camera::AcqThread::threadFunction() {
 			}
 			aLock.lock();
 			++m_cam.m_acq_frame_nb;
+		  
+			int completed_frames;
+			do {
+				m_cam.checkProgress(completed_frames);
+				DEB_TRACE() << DEB_VAR2(completed_frames, m_cam.m_acq_frame_nb);
+			}
+			while (completed_frames < m_cam.m_acq_frame_nb);
 			m_cam.m_read_wait_flag = false;
-			DEB_TRACE() << "acq thread signal read thread - frame collected";
+			DEB_TRACE() << "acq thread signal read thread: " << m_cam.m_acq_frame_nb << " frames collected";
 			m_cam.m_cond.broadcast();
 			aLock.unlock();
+		  } else {
+
+			struct timespec delay, remain;
+			delay.tv_sec = 0;
+			delay.tv_nsec = (int)(1E9*0.5);
+
+			int completed_frames;
+			do {
+			     m_cam.checkProgress(completed_frames);
+			     DEB_TRACE() << DEB_VAR2(completed_frames, m_cam.m_acq_frame_nb);
+			     DEB_TRACE() << "acq thread will sleep for " << delay.tv_nsec << " nanosecond";
+			     nanosleep(&delay, &remain);
+			}
+			while (completed_frames <= m_cam.m_acq_frame_nb);
+			aLock.lock();
+			m_cam.m_acq_frame_nb = (completed_frames > m_cam.m_nb_frames) ? m_cam.m_nb_frames : completed_frames;
+			m_cam.m_read_wait_flag = false;
+			DEB_TRACE() << "acq thread signal read thread: " << m_cam.m_acq_frame_nb << " frames collected";
+			m_cam.m_cond.broadcast();
+			aLock.unlock();
+
+		}
+
+
 		}
 		// wait for read thread to finish here
 		DEB_TRACE() << "acq thread Wait for read thead to finish";
@@ -241,6 +288,8 @@ void Camera::AcqThread::threadFunction() {
 
 Camera::AcqThread::AcqThread(Camera& cam) : m_cam(cam) {
 	AutoMutex aLock(m_cam.m_cond.mutex());
+	StdBufferCbMgr& buffer_mgr = m_cam.m_bufferCtrlObj.getBuffer();
+	SavingCtrlObj& saving = m_cam.m_savingCtrlObj;
 	m_cam.m_wait_flag = true;
 	m_cam.m_quit = false;
 	aLock.unlock();
@@ -257,8 +306,8 @@ Camera::AcqThread::~AcqThread() {
 void Camera::ReadThread::threadFunction() {
 	DEB_MEMBER_FUNCT();
 	AutoMutex aLock(m_cam.m_cond.mutex());
-	StdBufferCbMgr& buffer_mgr = m_cam.m_bufferCtrlObj.getBuffer();
-	SavingCtrlObj& saving = m_cam.m_savingCtrlObj;
+//	StdBufferCbMgr& buffer_mgr = m_cam.m_bufferCtrlObj.getBuffer();
+//	SavingCtrlObj& saving = m_cam.m_savingCtrlObj;
 
 	while (!m_cam.m_quit) {
 		while (m_cam.m_read_wait_flag && !m_cam.m_quit) {
@@ -359,10 +408,10 @@ void Camera::setTrigMode(TrigMode mode) {
 	case IntTrig:
 	case IntTrigMult:
 	case ExtGate:
-		m_trigger_mode = mode;
-		break;
 	case ExtTrigMult:
 	case ExtTrigSingle:
+		m_trigger_mode = mode;
+		break;
 	case ExtStartStop:
 	case ExtTrigReadout:
 	default:
@@ -457,7 +506,7 @@ SavingCtrlObj* Camera::getSavingCtrlObj() {
  * @param[in] flags setup flags {@see #ClockFlags}
  * @param[in] tp_type test pattern type in the IO spartan FPGAs
  */
-void Camera::setupClocks(int clk_src, int flags, int tp_type)
+void Camera::setupClocks(ClockSrc clk_src, ClockFlags flags, int tp_type)
 {
 	DEB_MEMBER_FUNCT();
 	DEB_TRACE() << "Camera::setupClocks() " << DEB_VAR3(clk_src,flags,tp_type);
@@ -854,16 +903,41 @@ void Camera::stop() {
 	if (xsp3_histogram_stop(m_handle, m_card) < 0){
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
+	int idleCount = 0;
+	while (idleCount < 2) {
+		struct timespec delay, remain;
+		delay.tv_sec = 0;
+		delay.tv_nsec = (int)(1E9*(0.01)); // sleep for 10msec
+		nanosleep(&delay, &remain);
+		if (xsp3_histogram_is_any_busy(m_handle) == 0) {
+			++idleCount;
+		}
+	}
 }
 
 /**
- * Clear histograming memory
+ * Enable/disable clearing of the histograming memory.
+ *
+ * @param[in] clear_flag set true is clear, set false does not clear.
  */
-void Camera::clear() {
+void Camera::setClearMode(bool clear_flag) {
 	DEB_MEMBER_FUNCT();
-	if (xsp3_histogram_clear(m_handle, 0, m_nb_chans, 0, m_nb_frames) < 0) {
+	m_clear_flag = clear_flag;
+}
+
+/**
+ * Check which frames have been acquired
+ *
+ * @param[out] frameNos the nos of frames of data acquired.
+ */
+void Camera::checkProgress(int& frameNos) {
+	DEB_MEMBER_FUNCT();
+	int fn = xsp3_scaler_check_progress(m_handle);
+	DEB_TRACE() << DEB_VAR1(fn);
+	if (fn < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
+	frameNos = fn;
 }
 
 /**
@@ -1009,6 +1083,7 @@ void Camera::setUseDtc(bool flag) {
  * scaler 5 - InWIn 0
  * scaler 6 - In Win 1
  * scaler 7 - PileUp
+ * scaler 8 - TotalTicks
  * @endverbatim
  *
  * @param bptr a pointer to the buffer for the returned data
@@ -1068,10 +1143,12 @@ void Camera::readScalers(Data& scalerData, int frame_nb, int channel) {
 		Buffer *fbuf = new Buffer();
 		u_int32_t *fptr = (u_int32_t*)frame_info.frame_ptr;
 		fptr += channel * (m_npixels + m_nscalers) + m_npixels;
+		DEB_TRACE() << DEB_VAR1(m_use_dtc);
 		if (m_use_dtc) {
+		  double dtcFactor;
 			scalerData.type = Data::DOUBLE;
 			double *buff = new double[m_nscalers];
-			correctScalerData(buff, fptr, channel);
+			correctScalerData(buff, fptr, channel, dtcFactor);
 			fbuf->data = buff;
 		} else {
 			scalerData.type = Data::UINT32;
@@ -1088,13 +1165,15 @@ void Camera::readScalers(Data& scalerData, int frame_nb, int channel) {
 	}
 }
 
-void Camera::correctScalerData(double* buff, u_int32_t* fptr, int channel) {
+void Camera::correctScalerData(double* buff, u_int32_t* fptr, int channel, double& dtcFactor) {
 	DEB_MEMBER_FUNCT();
 	double *dptr = buff;
-	double dtcFactor;
+	//	double dtcFactor;
 	double dtcAllEvent;
 	int flags = 0;
-	if (xsp3_calculateDeadtimeCorrectionFactors(m_handle, fptr, &dtcFactor, &dtcAllEvent, 1, 1) < 0) {
+
+	if (xsp3_calculateDeadtimeCorrectionFactors(m_handle, fptr, &dtcFactor, &dtcAllEvent, 1, channel, 1) < 0) {
+//	if (xsp3_calculateDeadtimeCorrectionFactors(m_handle, fptr, &dtcFactor, &dtcAllEvent, 1, 1) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
 	DEB_TRACE() << "Calculated dead time correction factor " << dtcFactor << " dtc allevent " << dtcAllEvent;
@@ -1145,7 +1224,7 @@ void Camera::readHistogram(Data& histData, int frame_nb, int channel) {
 			double *dptr = buff;
 			double dtcFactor;
 			double dtcAllEvent;
-			if (xsp3_calculateDeadtimeCorrectionFactors(m_handle, scalerData, &dtcFactor, &dtcAllEvent, 1, 1) < 0) {
+			if (xsp3_calculateDeadtimeCorrectionFactors(m_handle, scalerData, &dtcFactor, &dtcAllEvent, 1, channel, 1) < 0) {
 				THROW_HW_ERROR(Error) << xsp3_get_error_message();
 			}
 			histData.type = Data::DOUBLE;
@@ -1165,6 +1244,38 @@ void Camera::readHistogram(Data& histData, int frame_nb, int channel) {
 		histData.setBuffer(fbuf);
 		fbuf->unref();
 	}
+}
+
+/**
+ * Read a frame of raw histogram data for a particular channel.
+ *
+ * @param histData a data buffer to receive histogram data
+ * @param frame_nb the time frame to read
+ * @param channel the scaler channel to read
+ */
+void Camera::readRawHistogram(Data& histData, int frame_nb, int channel) {
+	DEB_MEMBER_FUNCT();
+	HwFrameInfo frame_info;
+
+	histData.type = Data::UINT32;
+	histData.dimensions.push_back(m_npixels);
+	histData.dimensions.push_back(1);
+	histData.frameNumber = frame_nb;
+
+	Buffer *fbuf = new Buffer();
+
+	u_int32_t *buff = new u_int32_t[m_npixels];
+	u_int32_t *bptr = buff;
+
+	DEB_TRACE() << "Camera::readRawHistogram " << DEB_VAR3(frame_nb, m_npixels, channel);
+	if (xsp3_histogram_read3d(m_handle, (u_int32_t*) bptr, 0, channel, frame_nb,
+			m_npixels, 1, 1) < 0) {
+		THROW_HW_ERROR(Error) << xsp3_get_error_message();
+	}
+
+	fbuf->data = buff;
+	histData.setBuffer(fbuf);
+	fbuf->unref();
 }
 
 void Camera::setAdcTempLimit(int temp) {
@@ -1252,15 +1363,21 @@ void Camera::setTiming(int time_src, int first_frame, int alt_ttl_mode, int debo
 		t_src = XSP3_GTIMA_SRC_SOFTWARE;
 		break;
 	case 1:
-		t_src = XSP3_GTIMA_SRC_TTL_VETO_ONLY;
-		break;
-	case 2:
-		t_src = XSP3_GTIMA_SRC_TTL_BOTH;
+		t_src = XSP3_GTIMA_SRC_INTERNAL;
 		break;
 	case 3:
-		t_src = XSP3_GTIMA_SRC_LVDS_VETO_ONLY;
+		t_src = XSP3_GTIMA_SRC_IDC;
 		break;
 	case 4:
+		t_src = XSP3_GTIMA_SRC_TTL_VETO_ONLY;
+		break;
+	case 5:
+		t_src = XSP3_GTIMA_SRC_TTL_BOTH;
+		break;
+	case 6:
+		t_src = XSP3_GTIMA_SRC_LVDS_VETO_ONLY;
+		break;
+	case 7:
 		t_src = XSP3_GTIMA_SRC_LVDS_BOTH;
 		break;
 	default:
@@ -1286,12 +1403,15 @@ void Camera::setTiming(int time_src, int first_frame, int alt_ttl_mode, int debo
 
 	switch (alt_ttl_mode)
 	{
-	case 0: alt_ttl = XSP3_ALT_TTL_TIMING; break;
-	case 1: alt_ttl = XSP3_ALT_TTL_INWINDOW; break;
-	case 2: alt_ttl = XSP3_ALT_TTL_INWINLIVE; break;
-	case 3: alt_ttl = XSP3_ALT_TTL_INWINLIVETOGGLE; break;
-	case 4: alt_ttl = XSP3_ALT_TTL_INWINGOODLIVE; break;
-	case 5: alt_ttl = XSP3_ALT_TTL_INWINGOODLIVETOGGLE; break;
+	case       0 : alt_ttl = XSP3_ALT_TTL_TIMING_VETO; break;
+	case 0x00400 : alt_ttl = XSP3_ALT_TTL_TIMING_ALL; break;
+	case 0x00800 : alt_ttl = XSP3_ALT_TTL_INWINDOW; break;
+	case 0x01000 : alt_ttl = XSP3_ALT_TTL_INWINLIVE; break;
+	case 0x02000 : alt_ttl = XSP3_ALT_TTL_INWINLIVETOGGLE; break;
+	case 0x04000 : alt_ttl = XSP3_ALT_TTL_INWINGOODLIVE; break;
+	case 0x08000 : alt_ttl = XSP3_ALT_TTL_INWINGOODLIVETOGGLE; break;
+	case 0x10000 : alt_ttl = XSP3_ALT_TTL_TIMING_VETO_GR; break;
+	case 0x20000 : alt_ttl = XSP3_ALT_TTL_TIMING_ALL_GR; break;
 	default:
 		THROW_HW_ERROR(Error) << "Invalid alternate ttl mode for TTL Out";
 	}
@@ -1348,12 +1468,11 @@ void Camera::formatRun(int chan, int nbits_eng, int aux1_mode, int adc_bits, int
 
 	switch (aux1_mode)
 	{
-	case 0:		//  the default.
-	case 1: aux1 = XSP3_FORMAT_AUX1_NONE;       break;
-	case 2: aux1 = XSP3_FORMAT_AUX1_TOP;        break;
-	case 3: aux1 = XSP3_FORMAT_AUX1_BOT;        break;
-	case 4: aux1 = XSP3_FORMAT_AUX1_PILEUP;     break;
-	case 5: aux1 = XSP3_FORMAT_AUX1_GOOD_GRADE; break;
+	case 	0:		// make no res grade the default.
+	case    1: aux1 = XSP3_FORMAT_RES_MODE_NONE;       break;
+	case 0x02: aux1 = XSP3_FORMAT_RES_MODE_TOP;        break;
+	case 0x04: aux1 = XSP3_FORMAT_RES_MODE_BOT;        break;
+	case 0x08: aux1 = XSP3_FORMAT_RES_MODE_PILEUP;     break;
 	default:
 		THROW_HW_ERROR(Error) << "Invalid aux1 mode specified";
 	}
@@ -1404,36 +1523,32 @@ void Camera::formatRun(int chan, int nbits_eng, int aux1_mode, int adc_bits, int
  *
  * @param[in] chan is the number of the channel in the xspress3 system, 0 to ({@link xsp3_get_num_chan()} - 1)
  *             if chan is less than 0 then all channels are selected
- * @param[out] data_src input data source:
- *             Normal          0 =  Input data from this channels ADC
- *             Alternate       1 = Input data from Alternate Channel
- *             Multiplexer     2 = Input Data from All channel multiplexer
- *             PlaybackStream0 3 = Input Data From Playback Stream 0
- *             PlaybackStream1 4 = Input Data From Playback Stream 1
+ * @param[out] data_src input data source {@see DataSrc}
  */
-void Camera::getDataSource(int chan, int& data_src) {
+void Camera::getDataSource(int chan, DataSrc& data_src) {
 	DEB_MEMBER_FUNCT();
 	u_int32_t chan_control;
 	if (xsp3_get_chan_cont(m_handle, chan, &chan_control) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
 	switch (chan_control & 0x7) {
-	case XSP3_CC_SEL_DATA(XSP3_CC_SEL_DATA_NORMAL):
+	case Camera::Normal:
 		data_src = Normal;
 		break;
-	case XSP3_CC_SEL_DATA(XSP3_CC_SEL_DATA_ALTERNATE):
+	case Camera::Alternate:
 		data_src = Alternate;
 		break;
-	case XSP3_CC_SEL_DATA(XSP3_CC_SEL_DATA_MUX_DATA):
+	case Camera::Multiplexer:
 		data_src = Multiplexer;
 		break;
-	case XSP3_CC_SEL_DATA(XSP3_CC_SEL_DATA_EXT0):
+	case Camera::PlaybackStream0:
 		data_src = PlaybackStream0;
 		break;
-	case XSP3_CC_SEL_DATA(XSP3_CC_SEL_DATA_EXT1):
+	case Camera::PlaybackStream1:
 		data_src = PlaybackStream1;
 		break;
 	}
+	DEB_TRACE() << DEB_VAR1(data_src);
 }
 
 /**
@@ -1441,19 +1556,15 @@ void Camera::getDataSource(int chan, int& data_src) {
  *
  * @param[in] chan is the number of the channel in the xspress3 system, 0 to ({@link xsp3_get_num_chan()} - 1)
  *             if chan is less than 0 then all channels are selected
- * @param[in] data_src input data source:
- *             Normal          0 = Input data from this channels ADC
- *             Alternate       1 = Input data from Alternate Channel
- *             Multiplexer     2 = Input Data from All channel multiplexer
- *             PlaybackStream0 3 = Input Data From Playback Stream 0
- *             PlaybackStream1 4 = Input Data From Playback Stream 1
+ * @param[in] data_src input data source {@see DataSrc}
  */
-void Camera::setDataSource(int chan, int data_src) {
+void Camera::setDataSource(int chan, DataSrc data_src) {
 	DEB_MEMBER_FUNCT();
 	u_int32_t chan_control;
 	int startChan;
 	int numChan;
 	int i;
+	DEB_TRACE() << DEB_VAR2(chan, data_src);
 	if (chan < 0) {
 		startChan = 0;
 		numChan = m_nb_chans;
@@ -1466,26 +1577,75 @@ void Camera::setDataSource(int chan, int data_src) {
 			THROW_HW_ERROR(Error) << xsp3_get_error_message();
 		}
 		chan_control &= ~0x7;
-		switch (data_src) {
-		default:
-		case Normal:
-			chan_control |= XSP3_CC_SEL_DATA(XSP3_CC_SEL_DATA_NORMAL);
-			break;
-		case Alternate:
-			chan_control |= XSP3_CC_SEL_DATA(XSP3_CC_SEL_DATA_ALTERNATE);
-			break;
-		case Multiplexer:
-			chan_control |= XSP3_CC_SEL_DATA(XSP3_CC_SEL_DATA_MUX_DATA);
-			break;
-		case PlaybackStream0:
-			chan_control |= XSP3_CC_SEL_DATA(XSP3_CC_SEL_DATA_EXT0);
-			break;
-		case PlaybackStream1:
-			chan_control |= XSP3_CC_SEL_DATA(XSP3_CC_SEL_DATA_EXT1);
-			break;
-		}
+		chan_control |= data_src;
 		if (xsp3_set_chan_cont(m_handle, i, chan_control) < 0) {
 			THROW_HW_ERROR(Error) << xsp3_get_error_message();
 		}
+	}
+}
+
+/**
+ * Setup xspress3 internal time frame generator.
+ *
+ * @param[in] nframe Number of time frames
+ * @param[in] triggerMode
+ * @param[in] gapMode Gap between frame
+ */
+//void setItfgTiming(int nframes, ItfgTriggerMode triggerMode, ItfgGapMode gapMode) {
+void Camera::setItfgTiming(int nframes, int triggerMode, int gapMode) {
+	DEB_MEMBER_FUNCT();
+	int trig_mode;
+	u_int32_t itime;
+	int gap_mode;
+
+	if (m_exp_time <= 0.0) {
+		THROW_HW_ERROR(Error) << "Exposure time has not been set";
+	}
+	switch (triggerMode) {
+	case Burst:
+		trig_mode = XSP3_ITFG_TRIG_MODE_BURST;
+		break;
+	case SoftwarePause:
+		trig_mode = XSP3_ITFG_TRIG_MODE_SOFTWARE;
+		break;
+	case HardwarePause:
+		trig_mode = XSP3_ITFG_TRIG_MODE_HARDWARE;
+		break;
+	case SoftwareOnlyFirst:
+		trig_mode = XSP3_ITFG_TRIG_MODE_SOFTWARE_ONLY_FIRST;
+		break;
+	case HardwareOnlyFirst:
+		trig_mode = XSP3_ITFG_TRIG_MODE_HARDWARE_ONLY_FIRST;
+		break;
+	default:
+		THROW_HW_ERROR(Error) << "Invalid trigger mode qualifiers";
+	}
+
+	if (m_exp_time > 12.5E-9*2.0*0x7FFFFFFF) {
+		THROW_HW_ERROR(Error) << "Collection time " << m_exp_time << " too long, must be <= 12.5E-9*2.0*0x7FFFFFFF";
+	}
+	itime = (u_int32_t)m_exp_time/12.5E-9;
+	if (itime < 2) {
+		THROW_HW_ERROR(Error) << "Minimum collection = 25 ns";
+	}
+	switch (gapMode) {
+	case Gap25ns:
+		gap_mode = XSP3_ITFG_GAP_MODE_25NS;
+		break;
+	case Gap200ns:
+		gap_mode = XSP3_ITFG_GAP_MODE_200NS;
+		break;
+	case Gap500ns:
+		gap_mode = XSP3_ITFG_GAP_MODE_500NS;
+		break;
+	case Gap1us:
+	default:
+		gap_mode = XSP3_ITFG_GAP_MODE_1US;
+		break;
+	}
+	DEB_TRACE() << DEB_VAR4(nframes, itime, trig_mode, gap_mode);
+	// use cardNos = 0 even in multi card systems for synchronisation
+	if (xsp3_itfg_setup(m_handle, 0, nframes, itime, trig_mode, gap_mode) < 0) {
+		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
 }

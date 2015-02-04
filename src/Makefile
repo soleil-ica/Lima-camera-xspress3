@@ -34,7 +34,8 @@ INCLUDES = -I../include \
 CXXFLAGS += $(INCLUDES) -fPIC -Wall -pthread
 
 ifneq ($(COMPILE_HDF5_SAVING),0)
-INCLUDES += -I../../../third-party/hdf5-1.8.12/include
+INCLUDES += -I../../../third-party/hdf5/src
+INCLUDES += -I../../../third-party/hdf5/c++/src
 CXXFLAGS += -DWITH_HDF5_SAVING
 endif
 

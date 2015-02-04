@@ -61,15 +61,14 @@ private:
 	int m_nscalers;
 	int m_npixels;
 	int m_nframes;
-	H5::H5File m_file;
-	H5::Group m_entry;
-// TODO: change this hardcoded asap!
-	H5::DataSet m_hist_dataset[9];
-	H5::DataSet m_hist_dtc_dataset[9];
-	H5::DataSpace m_hist_dataspace;
-	H5::DataSet m_scaler_dataset[9][8];
-	H5::DataSet m_scaler_dtc_dataset[9][8];
-	H5::DataSpace m_scaler_dataspace;
+	H5::H5File *m_file;
+	H5::Group *m_entry;
+	H5::DataSet *m_hist_dataset;
+	H5::DataSet *m_hist_dtc_dataset;
+	H5::DataSpace *m_hist_dataspace;
+	H5::DataSet *m_scaler_dataset; 
+	H5::DataSet *m_scaler_dtc_dataset;
+	H5::DataSpace *m_scaler_dataspace;
 
 	bool m_useDTC;
 };
