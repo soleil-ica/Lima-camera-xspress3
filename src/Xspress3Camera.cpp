@@ -19,14 +19,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program; if not, see <http://www.gnu.org/licenses/>.
 //###########################################################################
-//
-// Xspress3Camera.cpp
-// Created on: Sep 18, 2013
-// Author: g.r.mant
 
 #include "Xspress3Camera.h"
-#include "Exceptions.h"
-#include "Debug.h"
+#include "lima/Exceptions.h"
+#include "lima/Debug.h"
 #include "Xspress3Interface.h"
 
 using namespace lima;

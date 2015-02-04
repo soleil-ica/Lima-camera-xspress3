@@ -27,7 +27,7 @@
 #ifndef XSPRESS3INTERFACE_H_
 #define XSPRESS3INTERFACE_H_
 
-#include "HwInterface.h"
+#include "lima/HwInterface.h"
 #include "H5Cpp.h"
 
 namespace lima {

@@ -32,12 +32,12 @@
 #include <stdarg.h>
 #include <math.h>
 #include <strings.h>
-#include "HwMaxImageSizeCallback.h"
-#include "HwBufferMgr.h"
-#include "HwInterface.h"
+#include "lima/HwMaxImageSizeCallback.h"
+#include "lima/HwBufferMgr.h"
+#include "lima/HwInterface.h"
 #include <ostream>
-#include "Debug.h"
-#include "Data.h"
+#include "lima/Debug.h"
+#include "processlib/Data.h"
 #include "xspress3.h"
 #include "Xspress3Interface.h"
 
