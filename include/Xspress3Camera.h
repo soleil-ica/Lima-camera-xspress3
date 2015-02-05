@@ -19,11 +19,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program; if not, see <http://www.gnu.org/licenses/>.
 //###########################################################################
-/*
- * Xspress3Camera.h
- * Created on: Sep 18, 2013
- * Author: g.r.mant
- */
+
 #ifndef XSPRESS3CAMERA_H_
 #define XSPRESS3CAMERA_H_
 

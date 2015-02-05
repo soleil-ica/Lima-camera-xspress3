@@ -28,8 +28,9 @@
 #define XSPRESS3INTERFACE_H_
 
 #include "lima/HwInterface.h"
+#ifndef SIPCOMPILATION
 #include "H5Cpp.h"
-
+#endif
 namespace lima {
 namespace Xspress3 {
 
@@ -52,6 +53,7 @@ public:
 	virtual void writeFrame(int frame_nr = -1, int nb_frames = 1);
 	virtual void setCommonHeader(const HeaderMap&);
 
+#ifndef SIPCOMPILATION
 private:
 	void _prepare();
 	void _close();
@@ -71,6 +73,7 @@ private:
 	H5::DataSpace *m_scaler_dataspace;
 
 	bool m_useDTC;
+#endif
 };
 
 /*******************************************************************
