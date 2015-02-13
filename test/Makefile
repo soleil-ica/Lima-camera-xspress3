@@ -52,7 +52,7 @@ CXXFLAGS += -DWITH_CONFIG -I../../third-party/libconfig/lib
 LDLIBS += -L../../../third-party/libconfig/lib/.libs -lconfig
 endif
 
-HDF5_LDFLAGS := -L../../../third-party/hdf5/c++/src/.libs -L../../../third-party/hdf5/src/.libs
+HDF5_LDFLAGS := -L../../../third-party/hdf5/c++/src/.libs -L../../../third-party/hdf5/src/.libs -L../../../install/Lima/lib
 HDF5_LDLIBS := -lhdf5_cpp -lhdf5
 
 ifneq ($(COMPILE_SPS_IMAGE),0)
