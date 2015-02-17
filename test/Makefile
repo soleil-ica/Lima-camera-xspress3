@@ -28,9 +28,9 @@ LDFLAGS = -pthread -L../../../build  -L../../../third-party/Processlib/build
 LDLIBS = -llimaxspress3 -llimacore  -lprocesslib 
 PROCESSOR_TYPE := $(shell uname -m)
 ifeq ($(PROCESSOR_TYPE),x86_64)
-XSPRESS3_LDFLAGS	:= -L../camera/xspress3/sdk/libs/linux.x86_64
+XSPRESS3_LDFLAGS	:= -L../sdk/libs/linux.x86_64
 else
-XSPRESS3_LDFLAGS	:= -L../camera/xspress3/sdk/libs/linux.x86
+XSPRESS3_LDFLAGS	:= -L../sdk/libs/linux.x86
 endif
 XSPRESS3_LDLIBS	:= -lxspress3 -limg_mod
 
@@ -43,7 +43,8 @@ CXXFLAGS = -I../include \
 	       -I../../../third-party/Processlib/tasks/include \
 	       -I../../../third-party/Sps/Include \
 	       -I../sdk/include \
-	       -I../../../third-party/hdf5-1.8.12/include \
+	       -I../../../third-party/hdf5/src \
+	       -I../../../third-party/hdf5/c++/src \
 	        -Wall -pthread -g
 
 ifneq ($(COMPILE_CONFIG),0)
@@ -51,14 +52,10 @@ CXXFLAGS += -DWITH_CONFIG -I../../third-party/libconfig/lib
 LDLIBS += -L../../../third-party/libconfig/lib/.libs -lconfig
 endif
 
-ifeq ($(PROCESSOR_TYPE),x86_64)
-HDF5_LDFLAGS := -L../../../third-party/hdf5-1.8.12/libs/linux.x86_64
-else
-HDF5_LDFLAGS := -L../../../third-party/hdf5-1.8.12/libs/linux.x86
-endif
-HDF5_LDLIBS := -lhdf5_cpp -lhdf5 -lsz
+HDF5_LDFLAGS := -L../../../third-party/hdf5/c++/src/.libs -L../../../third-party/hdf5/src/.libs -L../../../install/Lima/lib
+HDF5_LDLIBS := -lhdf5_cpp -lhdf5
 
-ifneq ($(COMPILE_SPS),0)
+ifneq ($(COMPILE_SPS_IMAGE),0)
 CXXFLAGS += -DWITH_SPS_IMAGE -I../../third-party/libconfig/lib
 LDLIBS += -L../../../third-party/sps/lib/.libs -lconfig
 endif

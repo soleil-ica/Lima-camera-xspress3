@@ -61,7 +61,7 @@ int main(int argc, char *argv[])
 	int debug = 2;
 	int cardIndex = 0;
 	bool noUDP = 0;
-       	string directoryName = "/home/grm84/settings";
+       	string directoryName = "/home/xspress3/esrf/xspress3.8chan/settings";
 
 	try {
 
@@ -76,7 +76,7 @@ int main(int argc, char *argv[])
 
 		// setup fileformat and data saving info
 		CtSaving* saving = m_control->saving();
-		saving->setDirectory("/home/grm84/data");
+		saving->setDirectory("/home/xspress3/esrf/gmdata");
 		saving->setFormat(CtSaving::HDF5);
 	 	saving->setPrefix("xsp3_");
 		saving->setSuffix(".hdf");
@@ -88,15 +88,14 @@ int main(int argc, char *argv[])
 		// do acquisition
 		m_camera->setCard(0);
 		m_camera->setDataSource(-1, Camera::PlaybackStream0);
-		m_camera->loadPlayback("/home/grm84/git/Lima/camera/xspress3/test/Zr_mca15_pass0.d16", 0, 0);
+		m_camera->loadPlayback("/home/xspress3/esrf/Lima/camera/xspress3/test/Zr_mca15_pass0.d16", 0, 0);
 		m_camera->setRunMode(true);
-		m_camera->setUseDtc(true);
+		m_camera->setUseDtc(false);
 		//		m_camera->setDeadtimeCalculationEnergy(10000);
 		//		m_camera->setDeadtimeCorrectionParameters(-1,2.5304E-9,2.2534E-7, 2.5304E-9,2.2534E-7, true, false);
 
 		m_control->acquisition()->setAcqNbFrames(nframes);
 		m_control->acquisition()->setAcqExpoTime(m_exp_time);
-		m_camera->clear();
 		m_camera->setTiming(0, 0, 0, 100);
 		m_control->prepareAcq();
 		m_control->startAcq();
@@ -121,7 +120,6 @@ int main(int argc, char *argv[])
 		saving->setNextNumber(++num);
 		m_control->acquisition()->setAcqNbFrames(nframes);
 		m_control->acquisition()->setAcqExpoTime(m_exp_time);
-		m_camera->clear();
 		m_camera->setTiming(0, 0, 0, 100);
 		m_control->prepareAcq();
 		m_control->startAcq();

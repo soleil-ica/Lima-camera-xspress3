@@ -10,8 +10,7 @@ print "ChansPerCard          :", dev.read_attribute("chanspercard").value
 print "BinsPerMca            :", dev.read_attribute("binspermca").value
 print "Card (default)        :", dev.read_attribute("card").value
 
-nframes = 10
-exp_time = 2.0
+nframes = 100
 allChannels = -1
 
 lima=PyTango.DeviceProxy('limaccd/tango/1')
@@ -35,9 +34,8 @@ dev.command_inout("loadPlayback",[0,0])
 dev.write_attribute("runMode",[True])
 dev.write_attribute("useDtc",False)
 lima.write_attribute("acq_nb_frames",nframes)
-lima.write_attribute("acq_expo_time",exp_time)
-dev.write_attribute("setTiming",[0, 0, 0, 100])
-lima.write_attribute("acq_trigger_mode", "INTERNAL_TRIGGER")
+dev.write_attribute("setTiming",[4, 0, 0, 20])
+lima.write_attribute("acq_trigger_mode", "EXTERNAL_GATE")
 lima.command_inout("prepareAcq")
 lima.command_inout("startAcq")
 
