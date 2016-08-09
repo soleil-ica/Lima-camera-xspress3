@@ -1,7 +1,7 @@
 .. _camera-xspress3:
 
 Xspress3
--------
+--------
 
 .. image:: Xspress3.png 
 
@@ -32,29 +32,35 @@ The default network setup is (excluding the site network connection):
 1GBit Copper network for control communinication between the PC and the XSPRESS3 box.
 With more than 1 XSPRESS3 box connected this network uses a ethernet switch
 A private network with 64 addresses allocated:
-eth1     Link encap:Ethernet  HWaddr d4:ae:52:7d:5f:84
-         inet addr:192.168.0.1  Bcast:192.168.0.63  Mask:255.255.255.192
-         inet6 addr: fe80::d6ae:52ff:fe7d:5f84/64 Scope:Link
-         UP BROADCAST RUNNING MULTICAST  MTU:9000  Metric:1
-         RX packets:1567 errors:0 dropped:5766 overruns:0 frame:0
-         TX packets:158 errors:0 dropped:0 overruns:0 carrier:0
-         collisions:0 txqueuelen:1000
-         RX bytes:173937 (169.8 KiB)  TX bytes:37252 (36.3 KiB)
-         Interrupt:48 Memory:da000000-da012800
+
+.. code-block:: sh
+
+  ifconfig eth1
+  eth1     Link encap:Ethernet  HWaddr d4:ae:52:7d:5f:84
+           inet addr:192.168.0.1  Bcast:192.168.0.63  Mask:255.255.255.192
+           inet6 addr: fe80::d6ae:52ff:fe7d:5f84/64 Scope:Link
+           UP BROADCAST RUNNING MULTICAST  MTU:9000  Metric:1
+           RX packets:1567 errors:0 dropped:5766 overruns:0 frame:0
+           TX packets:158 errors:0 dropped:0 overruns:0 carrier:0
+           collisions:0 txqueuelen:1000
+           RX bytes:173937 (169.8 KiB)  TX bytes:37252 (36.3 KiB)
+           Interrupt:48 Memory:da000000-da012800
  
 A 10GBit Fibre network for data transfer, point to point with 4 addresses allocated.
 With more that 1 XSPRESS3 box there would be multiple 10G Ports on the PC with multiple 4 address range subnets
 
-ifconfig eth2
-eth2     Link encap:Ethernet  HWaddr 00:07:43:05:7c:65
-         inet addr:192.168.0.65  Bcast:192.168.0.67  Mask:255.255.255.252
-         inet6 addr: fe80::207:43ff:fe05:7c65/64 Scope:Link
-         UP BROADCAST RUNNING MULTICAST  MTU:9000  Metric:1
-         RX packets:0 errors:0 dropped:0 overruns:0 frame:0
-         TX packets:702 errors:0 dropped:0 overruns:0 carrier:0
-         collisions:0 txqueuelen:1000
-         RX bytes:0 (0.0 B)  TX bytes:154963 (151.3 KiB)
-         Interrupt:41 Memory:dd7fe000-dd7fefff
+.. code-block:: sh
+
+  ifconfig eth2
+  eth2     Link encap:Ethernet  HWaddr 00:07:43:05:7c:65
+           inet addr:192.168.0.65  Bcast:192.168.0.67  Mask:255.255.255.252
+           inet6 addr: fe80::207:43ff:fe05:7c65/64 Scope:Link
+           UP BROADCAST RUNNING MULTICAST  MTU:9000  Metric:1
+           RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+           TX packets:702 errors:0 dropped:0 overruns:0 carrier:0
+           collisions:0 txqueuelen:1000
+           RX bytes:0 (0.0 B)  TX bytes:154963 (151.3 KiB)
+           Interrupt:41 Memory:dd7fe000-dd7fefff
 
 Note the carefully picked subnet masks etc and the MTU 9000
 We then have a script that should be executed automatically at boot.
@@ -139,7 +145,7 @@ of the capabilities for Xspress3 cameras.
   getCurrImageType/getDefImageType(): is set to Bpp32
   setCurrImageType(): will not change the image type.
   getMaxImageSize/getDetectorImageSize(): is defined as number of pixels + number of scalers x number of channels. 
-                                          i.e. (4096+8) x 4 for a 4 channel xspress3 system
+  i.e. (4096+8) x 4 for a 4 channel xspress3 system
   getPixelSize(): is hardcoded to be 1x1
   getDetectorModel(): reads and reports the xspress3 firmware version.
 
@@ -157,16 +163,19 @@ Data Format
 
 The raw data is saved in .edf file format. Each frame is saved as it completes. To allow Lima to save both
 histogram and scaler data, the latter is appended to the histogram data.
-         histogram      scaler
+
+.. code-block:: sh
+
+    histogram                                     scaler
     [0] [0 ... 4095, 4096 ... 5003]               channel 0
     [1] [0 ... 4095, 4096 ... 5003]               channel 1
     [2] [0 ... 4095, 4096 ... 5003]               channel 2
     [3] [0 ... 4095, 4096 ... 5003]               channel 3
 
-	Camera::readScalers(): returns the raw scaler data from the Lima buffers from the specified frame and channel
-	Camera::readHistogram(): returns the raw histogram data from the Lima buffers from the specified frame and channel
-	setUseDtc/getUseDtc(): set to true will dead time correct the data returned from the Lima buffers (default is false)
-	setUseHW/getUseHw(): set to true will return raw histogram data from the H/W data buffers, including the current frame.
+Camera::readScalers(): returns the raw scaler data from the Lima buffers from the specified frame and channel
+Camera::readHistogram(): returns the raw histogram data from the Lima buffers from the specified frame and channel
+setUseDtc/getUseDtc(): set to true will dead time correct the data returned from the Lima buffers (default is false)
+setUseHW/getUseHw(): set to true will return raw histogram data from the H/W data buffers, including the current frame.
 
 How to use
 ````````````
