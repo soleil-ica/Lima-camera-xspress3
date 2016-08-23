@@ -1,6 +1,7 @@
 import PyTango
 import numpy
 import time
+import random
 
 dev=PyTango.DeviceProxy('xspress3/tango/1')
 print "NumCards              :", dev.read_attribute("numcards").value
@@ -11,29 +12,30 @@ print "BinsPerMca            :", dev.read_attribute("binspermca").value
 print "Card (default)        :", dev.read_attribute("card").value
 
 nframes = 10
-exp_time = 2.0
+exp_time = 1.0
 allChannels = -1
 
 lima=PyTango.DeviceProxy('limaccd/tango/1')
 # do not change the order of the saving attributes!
-lima.write_attribute("saving_directory","/home/xspress3/desy/data")
+lima.write_attribute("saving_directory","/home/grm84/data")
 lima.write_attribute("saving_format","HDf5")
 lima.write_attribute("saving_overwrite_policy","Abort")
 lima.write_attribute("saving_suffix", ".hdf")
 lima.write_attribute("saving_prefix","xsp3_")
 lima.write_attribute("saving_mode","MANUAL")
 lima.write_attribute("saving_managed_mode","HARDWARE")
-lima.write_attribute("saving_frames_per_file", nframes)
+lima.write_attribute("saving_frame_per_file", nframes)
 
 # do acquisition
 dev.write_attribute("card",0)
 dev.write_attribute("channel", allChannels)
 dev.write_attribute("dataSource",['PlaybackStream0'])
-dev.write_attribute("playbackFilename","/home/xspress3/desy/data/Zr_mca15_pass0.d16")
-dev.set_timeout_millis(30000)
-dev.command_inout("loadPlayback",[0,0])
+#dev.write_attribute("playbackFilename","/home/xspress3/desy/data/Zr_mca15_pass0.d16")
+#dev.set_timeout_millis(30000)
+#dev.command_inout("loadPlayback",[0,0])
 dev.write_attribute("runMode",[True])
 dev.write_attribute("useDtc",False)
+dev.write_attribute("saveChannels", [2,4,5])
 lima.write_attribute("acq_nb_frames",nframes)
 lima.write_attribute("acq_expo_time",exp_time)
 dev.write_attribute("setTiming",[0, 0, 0, 100])
@@ -43,3 +45,20 @@ lima.command_inout("startAcq")
 
 while dev.read_attribute("acqRunning").value :
     time.sleep(0.5)
+
+#for i in range(5):
+#    lima.command_inout("prepareAcq")
+#    start = time.time()
+#    lima.command_inout("startAcq")
+#    print "running"
+#    r = random.uniform(0.1, 10.0)
+#    print "sleep for ", r
+#    time.sleep(r)
+#    lima.command_inout("stopAcq")       
+#    print "Stopped in run ", i, " after ", time.time()-start, "secs"
+
+#    while dev.read_attribute("acqRunning").value :
+#        time.sleep(0.5)
+#    print "Completely stopped run ", i, " after ", time.time()-start, "secs"
+
+#print "Done"
