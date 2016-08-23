@@ -65,9 +65,9 @@ private:
 Camera::Camera(int nbCards, int maxFrames, string baseIPaddress, int basePort, string baseMACaddress, int nbChans,
 		bool createScopeModule, string scopeModuleName, int debug, int cardIndex, bool noUDP, string directoryName) : m_nb_cards(nbCards), m_max_frames(maxFrames),
 		m_baseIPaddress(baseIPaddress), m_basePort(basePort), m_baseMACaddress(baseMACaddress), m_nb_chans(nbChans),
-		m_create_module(createScopeModule), m_modname(scopeModuleName), m_card_index(cardIndex), m_debug(debug), m_npixels(4096), m_nscalers(XSP3_SW_NUM_SCALERS), m_no_udp(noUDP),
-		m_config_directory_name(directoryName), m_trigger_mode(IntTrig), m_image_type(Bpp32), m_nb_frames(1), m_acq_frame_nb(-1),
-															      m_bufferCtrlObj(), m_savingCtrlObj(*this)  {
+		m_create_module(createScopeModule), m_modname(scopeModuleName), m_card_index(cardIndex), m_debug(debug), m_npixels(4096), m_nscalers(XSP3_SW_NUM_SCALERS),
+		m_no_udp(noUDP), m_config_directory_name(directoryName), m_trigger_mode(IntTrig), m_image_type(Bpp32), m_nb_frames(1), m_acq_frame_nb(-1),
+		m_bufferCtrlObj(), m_savingCtrlObj(*this)  {
 
 	DEB_CONSTRUCTOR();
 	m_card = -1;
@@ -102,22 +102,23 @@ void Camera::init() {
 	}
 	DEB_TRACE() << "Initialise the ROI's";
 	initRoi(-1);
+	m_saveChannels = std::vector<bool>(m_nb_chans, true); // save all channels
 
 	DEB_TRACE() << "Set up clock register to use ADC clock...";
 	// the first card is the master clock
 	setCard(0);
+	// for testing only
+	//setupClocks(Camera::IntClk, Camera::Master | Camera::NoDither, 0);
 	setupClocks(Camera::XtalClk, Camera::Master | Camera::NoDither, 0);
-	//	setupClocks(XSP3_CLK_SRC_XTAL, XSP3_CLK_FLAGS_MASTER | XSP3_CLK_FLAGS_NO_DITHER, 0);
-	//       	setupClocks(XSP3_CLK_SRC_INT, XSP3_CLK_FLAGS_MASTER | XSP3_CLK_FLAGS_NO_DITHER, 0);
 	for (int i=1; i<m_nb_cards; i++) {
 		setCard(i);
 		setupClocks(Camera::ExtClk, Camera::NoDither, 0);
-//		setupClocks(XSP3_CLK_SRC_EXT, XSP3_CLK_FLAGS_NO_DITHER, 0);
 	}
 	setCard(-1);
 	if (m_config_directory_name != "") {
 		restoreSettings();
 	}
+
 	DEB_TRACE() <<  "Set up default run flags...";
 	setRunMode();
 	m_status = Idle;
@@ -127,9 +128,6 @@ void Camera::init() {
 
 void Camera::reset() {
 	DEB_MEMBER_FUNCT();
-	if (xsp3_close(m_handle) < 0){
-		THROW_HW_ERROR(Error) << xsp3_get_error_message();
-	}
 	init();
 }
 
@@ -155,6 +153,7 @@ void Camera::startAcq() {
 	AutoMutex aLock(m_cond.mutex());
 	m_wait_flag = false;
 	m_quit = false;
+	m_abort = false;
 	m_cond.broadcast();
 	// Wait that Acq thread start if it's an external trigger
 	//	while (m_trigger_mode == ExtGate && !m_thread_running)
@@ -165,8 +164,7 @@ void Camera::stopAcq() {
 	DEB_MEMBER_FUNCT();
 	AutoMutex aLock(m_cond.mutex());
 	m_wait_flag = true;
-	while (m_thread_running)
-		m_cond.wait();
+	m_abort = true;
 }
 
 void Camera::getStatus(Status& status) {
@@ -186,7 +184,6 @@ void Camera::AcqThread::threadFunction() {
 
 	while (!m_cam.m_quit) {
 		while (m_cam.m_wait_flag && !m_cam.m_quit) {
-			DEB_TRACE() << "Acq thread waiting";
 			m_cam.m_thread_running = false;
 			m_cam.m_cond.wait();
 		}
@@ -213,19 +210,23 @@ void Camera::AcqThread::threadFunction() {
 			while (nanosleep(&delay, &remain) == -1 && errno == EINTR)
 			{
 				// stop called ?
-				AutoMutex aLock(m_cam.m_cond.mutex());
-				continueFlag = !m_cam.m_wait_flag;
-				if (m_cam.m_wait_flag) {
-					DEB_TRACE() << "acq thread histogram stopped  by user";
-					m_cam.stop();
-					break;
-				}
+				//AutoMutex aLock(m_cam.m_cond.mutex());
+				//continueFlag = !m_cam.m_wait_flag;
+			  //if (m_cam.m_wait_flag) {
+			  //	DEB_TRACE() << "acq thread histogram stopped  by user";
+			  //	m_cam.stop();
+			  //break;
+			  //}
 				delay = remain;
 			}
-			if (m_cam.m_acq_frame_nb < m_cam.m_nb_frames-1) {
+			if (m_cam.m_abort) {
+			     DEB_TRACE() << "acq thread histogram stopped  by user";
+			     m_cam.stop();
+			     break;
+			} else if (m_cam.m_acq_frame_nb < m_cam.m_nb_frames-1) {
 				m_cam.pause();
 				m_cam.restart();
-				DEB_TRACE() << "acq thread histogram paused and restarted";
+				DEB_TRACE() << "acq thread histogram paused and restarted " << m_cam.m_wait_flag;
 			} else {
 				DEB_TRACE() << "acq thread histogram stop";
 				m_cam.stop();
@@ -233,10 +234,13 @@ void Camera::AcqThread::threadFunction() {
 			aLock.lock();
 			++m_cam.m_acq_frame_nb;
 		  
+			delay.tv_sec = 0;
+			delay.tv_nsec = (int)(1E9*0.5);
 			int completed_frames;
 			do {
 				m_cam.checkProgress(completed_frames);
 				DEB_TRACE() << DEB_VAR2(completed_frames, m_cam.m_acq_frame_nb);
+			        nanosleep(&delay, &remain);
 			}
 			while (completed_frames < m_cam.m_acq_frame_nb);
 			m_cam.m_read_wait_flag = false;
@@ -248,13 +252,19 @@ void Camera::AcqThread::threadFunction() {
 			struct timespec delay, remain;
 			delay.tv_sec = 0;
 			delay.tv_nsec = (int)(1E9*0.5);
+			std::cout << "Started checking in while loop" << std::endl;
 
 			int completed_frames;
 			do {
 			     m_cam.checkProgress(completed_frames);
-			     DEB_TRACE() << DEB_VAR2(completed_frames, m_cam.m_acq_frame_nb);
-			     DEB_TRACE() << "acq thread will sleep for " << delay.tv_nsec << " nanosecond";
+			     std::cout << completed_frames << " " << m_cam.m_acq_frame_nb << std::endl;
+			     std::cout << "acq thread will sleep for " << delay.tv_nsec << " nanosecond" << std::endl;
 			     nanosleep(&delay, &remain);
+			     if (m_cam.m_abort) {
+			       DEB_TRACE() << "acq thread histogram stopped  by user";
+			       m_cam.stop();
+			       break;
+			     }
 			}
 			while (completed_frames <= m_cam.m_acq_frame_nb);
 			aLock.lock();
@@ -265,13 +275,18 @@ void Camera::AcqThread::threadFunction() {
 			aLock.unlock();
 
 		}
+		if (m_cam.m_abort)
+		   break;
 
 
 		}
-		// wait for read thread to finish here
-		DEB_TRACE() << "acq thread Wait for read thead to finish";
-		aLock.lock();
-		m_cam.m_cond.wait();
+		//		if (!m_cam.m_wait_flag) { // user requested stop
+	        if (!m_cam.m_abort) { // user requested stop
+		  // wait for read thread to finish here
+		  DEB_TRACE() << "acq thread Wait for read thead to finish";
+		  aLock.lock();
+		  m_cam.m_cond.wait();
+		}
 
 		m_cam.m_status = Idle;
 		m_cam.m_thread_running = false;
@@ -303,7 +318,7 @@ void Camera::ReadThread::threadFunction() {
 
 	while (!m_cam.m_quit) {
 		while (m_cam.m_read_wait_flag && !m_cam.m_quit) {
-			DEB_TRACE() << "Read thread waiting";
+		  DEB_TRACE() << "Read thread waiting";
 			m_cam.m_cond.wait();
 		}
 		DEB_TRACE() << "Read Thread Running";
@@ -722,6 +737,7 @@ void Camera::setRinging(int chan, double scale_a, int delay_a, double scale_b, i
 void Camera::setDeadtimeCalculationEnergy(double energy) {
 	DEB_MEMBER_FUNCT();
 	DEB_TRACE() << "Camera::setDeadtimeCalculationEnergy() " << DEB_VAR1(energy);
+
 	if (xsp3_setDeadtimeCalculationEnergy(m_handle, energy) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
@@ -1297,7 +1313,13 @@ void Camera::setPlayback(bool enable) {
 void Camera::loadPlayback(string filename, int src0, int src1, int streams, int digital) {
 	DEB_MEMBER_FUNCT();
 	DEB_TRACE() << "Camera::loadPlayback() " << DEB_VAR5(filename,src0,src1,streams,digital);
-	if (xsp3_playback_load_x3(m_handle, m_card, (char*)filename.c_str(), src0, src1, streams, digital) < 0) {
+	int src[16];
+	int file_streams;
+	int str0dig;
+	int smooth_join;
+	int enb16chan;
+	// if (xsp3_playback_load_x3(m_handle, m_card, (char*)filename.c_str(), src0, src1, streams, digital) < 0) {
+	if (xsp3_playback_load_x3(m_handle, m_card, (char*)filename.c_str(), src, file_streams, str0dig, smooth_join, enb16chan) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
 }
@@ -1305,11 +1327,14 @@ void Camera::loadPlayback(string filename, int src0, int src1, int streams, int 
 void Camera::startScope() {
 	DEB_MEMBER_FUNCT();
 	bool count_enb = true;
+	int pb_num_t = 0;
+	int scope_num_t = 0;
 
 	if (xsp3_scope_settings_from_mod(m_handle) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
-	if (xsp3_system_start_count_enb(m_handle, m_card, count_enb) < 0) {
+	// if (xsp3_system_start_count_enb(m_handle, m_card, count_enb) < 0) {
+	if (xsp3_system_start_count_enb(m_handle, m_card, count_enb, pb_num_t, scope_num_t) < 0) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
 	if (xsp3_scope_wait(m_handle, m_card) < 0) {
@@ -1641,3 +1666,22 @@ void Camera::setItfgTiming(int nframes, int triggerMode, int gapMode) {
 		THROW_HW_ERROR(Error) << xsp3_get_error_message();
 	}
 }
+
+void Camera::setSaveChannels(std::vector<int> channels) {
+	DEB_MEMBER_FUNCT();
+        // Turn all the channels off,
+        // then turn the ones we want back on
+	DEB_TRACE() << DEB_VAR1(m_nb_chans);
+        for (std::vector<bool>::iterator it = m_saveChannels.begin(); it != m_saveChannels.end(); ++it) {
+             *it = false;
+        }
+        for (std::vector<int>::iterator it = channels.begin(); it != channels.end(); ++it) {
+              m_saveChannels[*it] = true;
+        }
+}
+
+// for internal Lima xspress3 camera use
+std::vector<bool> Camera::getSaveChannels() {
+	return m_saveChannels;
+}
+

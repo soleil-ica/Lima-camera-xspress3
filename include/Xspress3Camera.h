@@ -27,6 +27,7 @@
 #include <limits.h>
 #include <stdarg.h>
 #include <math.h>
+#include <vector>
 #include <strings.h>
 #include "lima/HwMaxImageSizeCallback.h"
 #include "lima/HwBufferMgr.h"
@@ -229,6 +230,9 @@ public:
 	void setDataSource(int chan, DataSrc data_src=Normal);
 	//	void setItfgTiming(int nframes, ItfgTriggerMode triggerMode, ItfgGapMode gapMode);
 	void setItfgTiming(int nframes, int triggerMode, int gapMode);
+        void setSaveChannels(std::vector<int> channels);
+	// internal only not for sip
+	std::vector<bool> getSaveChannels();
 
 private:
 	class AcqThread;
@@ -254,6 +258,7 @@ private:
 	bool m_use_dtc;
 	bool m_clear_flag;
 	int m_card;
+	std::vector<bool> m_saveChannels;
 
 	// Lima
 	AcqThread *m_acq_thread;   // Thread to handle data acquisition
@@ -266,6 +271,7 @@ private:
 	bool m_wait_flag;
 	bool m_read_wait_flag;
 	bool m_quit;
+	bool m_abort;
 	int m_acq_frame_nb; // nos of frames acquired
 	int m_read_frame_nb; // nos of frames readout
 	mutable Cond m_cond;

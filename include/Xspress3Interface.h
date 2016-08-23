@@ -28,6 +28,7 @@
 #define XSPRESS3INTERFACE_H_
 
 #include "lima/HwInterface.h"
+#include <vector>
 #ifndef SIPCOMPILATION
 #include "H5Cpp.h"
 #endif
@@ -63,6 +64,9 @@ private:
 	int m_nscalers;
 	int m_npixels;
 	int m_nframes;
+	int m_saving_nchan;
+	bool m_useDTC;
+
 	H5::H5File *m_file;
 	H5::Group *m_entry;
 	H5::DataSet *m_hist_dataset;
@@ -71,8 +75,6 @@ private:
 	H5::DataSet *m_scaler_dataset; 
 	H5::DataSet *m_scaler_dtc_dataset;
 	H5::DataSpace *m_scaler_dataspace;
-
-	bool m_useDTC;
 #endif
 };
 

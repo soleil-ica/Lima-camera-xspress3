@@ -6,8 +6,8 @@ import time
 mode = 0 # burst
 gap = 3 # 1us
 debounce = 80 # clock cycles
-nframes = 10
-exp_time = 2.0 # seconds
+nframes = 100
+exp_time = 0.5 # seconds
 cardNos = 0;
 timeSource = 1 # internal
 firstFrame = 0
