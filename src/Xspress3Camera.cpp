@@ -1641,7 +1641,7 @@ void Camera::setItfgTiming(int nframes, int triggerMode, int gapMode) {
 	if (m_exp_time > 12.5E-9*2.0*0x7FFFFFFF) {
 		THROW_HW_ERROR(Error) << "Collection time " << m_exp_time << " too long, must be <= 12.5E-9*2.0*0x7FFFFFFF";
 	}
-	itime = (u_int32_t)m_exp_time/12.5E-9;
+	itime = (u_int32_t)(m_exp_time/12.5E-9);
 	if (itime < 2) {
 		THROW_HW_ERROR(Error) << "Minimum collection = 25 ns";
 	}
