@@ -281,7 +281,7 @@ void Camera::AcqThread::threadFunction() {
 
         if (m_cam.m_abort) {
             SavingCtrlObj& saving = m_cam.m_savingCtrlObj;
-            saving._close();
+            saving.close();
         }
 
         //      if (!m_cam.m_wait_flag) { // user requested stop
