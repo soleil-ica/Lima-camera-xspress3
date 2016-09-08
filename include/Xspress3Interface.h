@@ -55,6 +55,8 @@ public:
 	virtual void setCommonHeader(const HeaderMap&);
 	void _close();
 
+	void close();
+
 #ifndef SIPCOMPILATION
 private:
 	void _prepare();

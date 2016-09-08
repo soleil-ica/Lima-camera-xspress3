@@ -278,6 +278,11 @@ void SavingCtrlObj::_prepare() {
 	}
 }
 
+void SavingCtrlObj::close() {
+	_close();
+}
+
+
 void SavingCtrlObj::_close() {
 	DEB_MEMBER_FUNCT();
 
