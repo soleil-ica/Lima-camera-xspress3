@@ -53,11 +53,11 @@ public:
 	virtual void getPossibleSaveFormat(std::list<std::string> &format_list) const;
 	virtual void writeFrame(int frame_nr = -1, int nb_frames = 1);
 	virtual void setCommonHeader(const HeaderMap&);
+	void _close();
 
 #ifndef SIPCOMPILATION
 private:
 	void _prepare();
-	void _close();
 
 	Camera& m_cam;
 	int m_nchan;

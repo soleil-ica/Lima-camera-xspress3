@@ -273,11 +273,17 @@ void Camera::AcqThread::threadFunction() {
 
             }
 
-            if (m_cam.m_abort)
+            if (m_cam.m_abort) 
                 break;
 
 
         }
+
+        if (m_cam.m_abort) {
+            SavingCtrlObj& saving = m_cam.m_savingCtrlObj;
+            saving._close();
+        }
+
         //      if (!m_cam.m_wait_flag) { // user requested stop
         if (!m_cam.m_abort) { // user requested stop
             // wait for read thread to finish here
