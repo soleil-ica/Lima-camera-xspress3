@@ -341,7 +341,7 @@ void Camera::ReadThread::threadFunction() {
             frame_info.acq_frame_nb = m_cam.m_read_frame_nb;
             continueFlag = buffer_mgr.newFrameReady(frame_info);
             DEB_TRACE() << "readThread::threadFunction() newframe ready ";
-            saving.writeFrame(m_cam.m_read_frame_nb,1);
+            // saving.writeFrame(m_cam.m_read_frame_nb,1);
             ++m_cam.m_read_frame_nb;
         }
         aLock.lock();
