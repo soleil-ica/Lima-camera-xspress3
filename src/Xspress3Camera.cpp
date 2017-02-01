@@ -329,6 +329,12 @@ void Camera::ReadThread::threadFunction() {
         if (m_cam.m_quit)
             return;
 
+        if (m_cam.m_abort) {
+            DEB_TRACE() << "User Aborted Acq, Read thread waiting";
+            m_cam.m_read_wait_flag = true;
+            continue;
+        }
+
         aLock.unlock();
 
         bool continueFlag = true;
