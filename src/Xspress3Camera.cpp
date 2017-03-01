@@ -109,7 +109,8 @@ void Camera::init() {
     setCard(0);
     // for testing only
     //setupClocks(Camera::IntClk, Camera::Master | Camera::NoDither, 0);
-    setupClocks(Camera::XtalClk, Camera::Master | Camera::NoDither, 0);
+    int gen = xsp3_get_generation(m_handle, m_card);
+    setupClocks(gen == 2 ? Camera::Mini : Camera::XtalClk, Camera::Master | Camera::NoDither, 0);
     for (int i=1; i<m_nb_cards; i++) {
         setCard(i);
         setupClocks(Camera::ExtClk, Camera::NoDither, 0);

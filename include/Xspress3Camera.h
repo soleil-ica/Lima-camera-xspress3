@@ -90,7 +90,8 @@ public:
 		IntClk = XSP3_CLK_SRC_INT,		///< channel processing clock comes from fpga processor (testing only)
 		XtalClk = XSP3_CLK_SRC_XTAL,	///< adc and channel processing clock from crystal on the ADC board (normal single board or master operation).
 		ExtClk = XSP3_CLK_SRC_EXT,  	///< adc and channel processing clock from lemo clock connector on ADC board (slave boards)
-		Future = XSP3_CLK_SRC_FPGA		///< not implemented, for future expansion
+		Future = XSP3_CLK_SRC_FPGA,		///< not implemented, for future expansion
+		Mini = XSP3M_CLK_SRC_CDCM61004
 	};
 
 	enum ClockFlags {
