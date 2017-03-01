@@ -417,6 +417,32 @@ HwBufferCtrlObj* Camera::getBufferCtrlObj() {
     return &m_bufferCtrlObj;
 }
 
+void Camera::setTimingMode() {
+    DEB_MEMBER_FUNCT();
+    
+    if (!m_exp_time) return;
+    if (!m_nb_frames) return;
+
+    DEB_TRACE() << "Camera::setTimingMode() " << DEB_VAR1(m_trigger_mode) << "exp " << DEB_VAR1(m_exp_time) << "nbf " << m_nb_frames;
+
+    int alt_ttl_mode = 0;
+    int debounce = 80;
+
+    if (m_trigger_mode == IntTrig) {
+        // Src 1 = Internal
+        // setTiming(int time_src, int first_frame, int alt_ttl_mode, int debounce, bool loop_io, bool f0_invert, bool veto_invert);
+        setTiming(1, 0, alt_ttl_mode, debounce, false, false, false);
+
+        // setItfgTiming(int nframes, int triggerMode, int gapMode);
+        // triggerMode 0 = Burst, gapMode 3 = 1us
+        setItfgTiming(m_nb_frames, 0, 3);
+
+    } else if (m_trigger_mode == ExtGate) {
+        // Src 4 = Ext
+        setTiming(4, 0, alt_ttl_mode, debounce, false, false, false);
+    }
+}
+
 void Camera::setTrigMode(TrigMode mode) {
     DEB_MEMBER_FUNCT();
     DEB_TRACE() << "Camera::setTrigMode() " << DEB_VAR1(mode);
@@ -435,6 +461,8 @@ void Camera::setTrigMode(TrigMode mode) {
         THROW_HW_ERROR(Error) << "Cannot change the Trigger Mode of the camera, this mode is not managed !";
         break;
     }
+
+    setTimingMode();
 }
 
 void Camera::getTrigMode(TrigMode& mode) {
@@ -456,6 +484,7 @@ void Camera::setExpTime(double exp_time) {
     DEB_TRACE() << "Camera::setExpTime() " << DEB_VAR1(exp_time);
 
     m_exp_time = exp_time;
+    setTimingMode();
 }
 
 void Camera::setLatTime(double lat_time) {
@@ -494,6 +523,7 @@ void Camera::setNbFrames(int nb_frames) {
         THROW_HW_ERROR(Error) << "Number of frames to acquire has not been set";
     }
     m_nb_frames = nb_frames;
+    setTimingMode();
 }
 
 void Camera::getNbFrames(int& nb_frames) {

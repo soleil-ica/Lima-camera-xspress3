@@ -225,6 +225,7 @@ public:
 	void startScope();
 	void setTiming(int time_src, int fixed_time, int alt_ttl_mode, int debounce, bool loop_io=false,
 			bool f0_invert=false, bool veto_invert=false);
+	void setTimingMode();
 	void formatRun(int chan, int nbits_eng=12, int aux1_mode=0, int adc_bits=0, int min_samples=0, int aux2_mode=0, bool pileup_reject=false);
 	void getDataSource(int chan, DataSrc& data_src);
 	void setDataSource(int chan, DataSrc data_src=Normal);
