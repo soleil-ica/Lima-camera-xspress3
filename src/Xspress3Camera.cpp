@@ -1133,6 +1133,8 @@ void Camera::setUseDtc(bool flag) {
  * scaler 6 - In Win 1
  * scaler 7 - PileUp
  * scaler 8 - TotalTicks
+ * scalar 9 - Deadtime %
+ * scalar 10 - Deadtime correction factor
  * @endverbatim
  *
  * @param bptr a pointer to the buffer for the returned data
@@ -1171,6 +1173,7 @@ void Camera::readFrame(void *fptr, int frame_nb) {
  * scaler 5 - InWindow 0
  * scaler 6 - InWindow 1
  * scaler 7 - PileUp
+ * scalar 8 - Total Ticks
  * @endverbatim
  *
  * @param scalerData a data buffer to receive scaler data
@@ -1185,7 +1188,7 @@ void Camera::readScalers(Data& scalerData, int frame_nb, int channel) {
     } else {
         StdBufferCbMgr& buffer_mgr = m_bufferCtrlObj.getBuffer();
         buffer_mgr.getFrameInfo(frame_nb,frame_info);
-        scalerData.dimensions.push_back(m_nscalers);
+        scalerData.dimensions.push_back(m_nscalers+2);
         scalerData.dimensions.push_back(1);
         scalerData.frameNumber = frame_nb;
 
@@ -1193,22 +1196,33 @@ void Camera::readScalers(Data& scalerData, int frame_nb, int channel) {
         u_int32_t *fptr = (u_int32_t*)frame_info.frame_ptr;
         fptr += channel * (m_npixels + m_nscalers) + m_npixels;
         DEB_TRACE() << DEB_VAR1(m_use_dtc);
+
+        scalerData.type = Data::DOUBLE;
+        double *buff = new double[m_nscalers+2];
+        double *bptr = buff;
+
         if (m_use_dtc) {
-          double dtcFactor;
-            scalerData.type = Data::DOUBLE;
-            double *buff = new double[m_nscalers];
+            double dtcFactor;
             correctScalerData(buff, fptr, channel, dtcFactor);
-            fbuf->data = buff;
         } else {
-            scalerData.type = Data::UINT32;
-            u_int32_t *buff = new u_int32_t[m_nscalers];
-            u_int32_t *bptr = buff;
-            scalerData.type = Data::UINT32;
             for (int i = 0; i < m_nscalers; i++) {
-                *bptr++ = *fptr++;
+                *bptr++ = (double)*fptr++;
             }
-            fbuf->data = buff;
         }
+
+        Xspress3_TriggerB trig_b;
+        xsp3_get_trigger_b(m_handle, channel, &trig_b);
+        double evtwidth = (double)trig_b.event_time;
+        double resets = buff[1];
+        double allevt = buff[3];
+        double ctime = buff[0];
+
+        DEB_TRACE() << DEB_VAR4(evtwidth, resets, allevt, ctime);
+
+        *bptr++ = 100.0*(allevt*(evtwidth+1) + resets)/ctime;
+        *bptr++ = ctime/(ctime - (allevt*(evtwidth+1) + resets));
+
+        fbuf->data = buff;
         scalerData.setBuffer(fbuf);
         fbuf->unref();
     }
