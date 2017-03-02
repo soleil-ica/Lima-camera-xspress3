@@ -1133,8 +1133,6 @@ void Camera::setUseDtc(bool flag) {
  * scaler 6 - In Win 1
  * scaler 7 - PileUp
  * scaler 8 - TotalTicks
- * scalar 9 - Deadtime %
- * scalar 10 - Deadtime correction factor
  * @endverbatim
  *
  * @param bptr a pointer to the buffer for the returned data
@@ -1174,6 +1172,8 @@ void Camera::readFrame(void *fptr, int frame_nb) {
  * scaler 6 - InWindow 1
  * scaler 7 - PileUp
  * scalar 8 - Total Ticks
+ * scalar 9 - Deadtime %
+ * scalar 10 - Deadtime correction factor
  * @endverbatim
  *
  * @param scalerData a data buffer to receive scaler data
