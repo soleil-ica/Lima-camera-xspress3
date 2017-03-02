@@ -1355,14 +1355,20 @@ void Camera::loadPlayback(string filename, int src0, int src1, int streams, int 
     DEB_MEMBER_FUNCT();
     DEB_TRACE() << "Camera::loadPlayback() " << DEB_VAR5(filename,src0,src1,streams,digital);
     int src[16];
-    int file_streams;
     int str0dig;
     int smooth_join;
-    int enb16chan;
-    // if (xsp3_playback_load_x3(m_handle, m_card, (char*)filename.c_str(), src0, src1, streams, digital) < 0) {
-    if (xsp3_playback_load_x3(m_handle, m_card, (char*)filename.c_str(), src, file_streams, str0dig, smooth_join, enb16chan) < 0) {
+    int enb_higher_chan;
+
+    src[0] = src0;
+    src[1] = src1;
+
+    if (xsp3_get_generation(m_handle, m_card) == 2) enb_higher_chan = 1;
+    if (xsp3_playback_load_x3(m_handle, m_card, (char*)filename.c_str(), src, streams, str0dig, smooth_join, enb_higher_chan) < 0) {
         THROW_HW_ERROR(Error) << xsp3_get_error_message();
     }
+
+    setRunMode(true, false, true, true);
+    setDataSource(0, Camera::PlaybackStream0);
 }
 
 void Camera::startScope() {
