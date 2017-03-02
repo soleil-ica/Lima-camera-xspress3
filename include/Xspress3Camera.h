@@ -47,7 +47,6 @@ const int xPixelSize = 1;
 const int yPixelSize = 1;
 
 class BufferCtrlObj;
-class SavingCtrlObj;
 
 /*******************************************************************
  * \class Camera
@@ -147,9 +146,6 @@ public:
 	// -- Buffer control object
 	HwBufferCtrlObj* getBufferCtrlObj();
 
-	// -- Saving control object
-	SavingCtrlObj* getSavingCtrlObj();
-
 	//-- Synch control object
 	void setTrigMode(TrigMode mode);
 	void getTrigMode(TrigMode& mode);
@@ -230,11 +226,8 @@ public:
 	void formatRun(int chan, int nbits_eng=12, int aux1_mode=0, int adc_bits=0, int min_samples=0, int aux2_mode=0, bool pileup_reject=false);
 	void getDataSource(int chan, DataSrc& data_src);
 	void setDataSource(int chan, DataSrc data_src=Normal);
-	//	void setItfgTiming(int nframes, ItfgTriggerMode triggerMode, ItfgGapMode gapMode);
 	void setItfgTiming(int nframes, int triggerMode, int gapMode);
-        void setSaveChannels(std::vector<int> channels);
 	// internal only not for sip
-	std::vector<bool> getSaveChannels();
 
 private:
 	class AcqThread;
@@ -260,7 +253,6 @@ private:
 	bool m_use_dtc;
 	bool m_clear_flag;
 	int m_card;
-	std::vector<bool> m_saveChannels;
 
 	// Lima
 	AcqThread *m_acq_thread;   // Thread to handle data acquisition
@@ -280,7 +272,6 @@ private:
 
 	// Buffer control object
 	SoftBufferCtrlObj m_bufferCtrlObj;
-	SavingCtrlObj m_savingCtrlObj;
 
 	void readFrame(void* ptr, int frame_nb);
 };

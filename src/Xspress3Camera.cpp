@@ -67,7 +67,7 @@ Camera::Camera(int nbCards, int maxFrames, string baseIPaddress, int basePort, s
         m_baseIPaddress(baseIPaddress), m_basePort(basePort), m_baseMACaddress(baseMACaddress), m_nb_chans(nbChans),
         m_create_module(createScopeModule), m_modname(scopeModuleName), m_card_index(cardIndex), m_debug(debug), m_npixels(4096), m_nscalers(XSP3_SW_NUM_SCALERS),
         m_no_udp(noUDP), m_config_directory_name(directoryName), m_trigger_mode(IntTrig), m_image_type(Bpp32), m_nb_frames(1), m_acq_frame_nb(-1),
-        m_bufferCtrlObj(), m_savingCtrlObj(*this)  {
+        m_bufferCtrlObj() {
 
     DEB_CONSTRUCTOR();
     m_card = -1;
@@ -102,7 +102,6 @@ void Camera::init() {
     }
     DEB_TRACE() << "Initialise the ROI's";
     initRoi(-1);
-    m_saveChannels = std::vector<bool>(m_nb_chans, true); // save all channels
 
     DEB_TRACE() << "Set up clock register to use ADC clock...";
     // the first card is the master clock
@@ -280,11 +279,6 @@ void Camera::AcqThread::threadFunction() {
 
         }
 
-        if (m_cam.m_abort) {
-            SavingCtrlObj& saving = m_cam.m_savingCtrlObj;
-            // saving.close();
-        }
-
         //      if (!m_cam.m_wait_flag) { // user requested stop
         if (!m_cam.m_abort) { // user requested stop
             // wait for read thread to finish here
@@ -319,7 +313,6 @@ void Camera::ReadThread::threadFunction() {
     DEB_MEMBER_FUNCT();
     AutoMutex aLock(m_cam.m_cond.mutex());
     StdBufferCbMgr& buffer_mgr = m_cam.m_bufferCtrlObj.getBuffer();
-    SavingCtrlObj& saving = m_cam.m_savingCtrlObj;
 
     while (!m_cam.m_quit) {
         while (m_cam.m_read_wait_flag && !m_cam.m_quit) {
@@ -348,7 +341,6 @@ void Camera::ReadThread::threadFunction() {
             frame_info.acq_frame_nb = m_cam.m_read_frame_nb;
             continueFlag = buffer_mgr.newFrameReady(frame_info);
             DEB_TRACE() << "readThread::threadFunction() newframe ready ";
-            // saving.writeFrame(m_cam.m_read_frame_nb,1);
             ++m_cam.m_read_frame_nb;
         }
         aLock.lock();
@@ -537,10 +529,6 @@ void Camera::getNbFrames(int& nb_frames) {
 bool Camera::isAcqRunning() const {
     AutoMutex aLock(m_cond.mutex());
     return m_thread_running;
-}
-
-SavingCtrlObj* Camera::getSavingCtrlObj() {
-    return &m_savingCtrlObj;
 }
 
 /////////////////////////////////
@@ -1722,22 +1710,3 @@ void Camera::setItfgTiming(int nframes, int triggerMode, int gapMode) {
         THROW_HW_ERROR(Error) << xsp3_get_error_message();
     }
 }
-
-void Camera::setSaveChannels(std::vector<int> channels) {
-    DEB_MEMBER_FUNCT();
-        // Turn all the channels off,
-        // then turn the ones we want back on
-    DEB_TRACE() << DEB_VAR1(m_nb_chans);
-        for (std::vector<bool>::iterator it = m_saveChannels.begin(); it != m_saveChannels.end(); ++it) {
-             *it = false;
-        }
-        for (std::vector<int>::iterator it = channels.begin(); it != channels.end(); ++it) {
-              m_saveChannels[*it] = true;
-        }
-}
-
-// for internal Lima xspress3 camera use
-std::vector<bool> Camera::getSaveChannels() {
-    return m_saveChannels;
-}
-

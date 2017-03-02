@@ -20,7 +20,7 @@
 # along with this program; if not, see <http://www.gnu.org/licenses/>.
 ############################################################################
 
-xspress3-objs := Xspress3Camera.o Xspress3Interface.o Xspress3DetInfoCtrlObj.o Xspress3SyncCtrlObj.o Xspress3SavingCtrlObj.o
+xspress3-objs := Xspress3Camera.o Xspress3Interface.o Xspress3DetInfoCtrlObj.o Xspress3SyncCtrlObj.o
 
 SRCS = $(xspress3-objs:.o=.cpp)
 
