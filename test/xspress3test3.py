@@ -1,50 +1,41 @@
+# Xspress3 Test 3
+# Using playback data
+
 import PyTango
 import numpy
 import time
+import random
 
 # definitions
-mode = 0 # burst
-gap = 3 # 1us
-debounce = 80 # clock cycles
-nframes = 100
-exp_time = 0.5 # seconds
-cardNos = 0;
-timeSource = 1 # internal
-firstFrame = 0
-ttl = 0 # default
-allChannels = -1
+nframes = 10
+exp_time = 1 # seconds
 
-dev = PyTango.DeviceProxy('xspress3/tango/1')
-lima = PyTango.DeviceProxy('limaccd/tango/1')
+dev = PyTango.DeviceProxy('lima/xspress3/1')
+lima = PyTango.DeviceProxy('lima/limaccd/1')
 
-# do not change the order of the saving attributes!
-lima.write_attribute("saving_directory","/home/xspress3/desy/data")
-lima.write_attribute("saving_format","HDf5")
-lima.write_attribute("saving_overwrite_policy","Abort")
-lima.write_attribute("saving_suffix", ".hdf")
-lima.write_attribute("saving_prefix","xsp3_")
-lima.write_attribute("saving_mode","MANUAL")
-lima.write_attribute("saving_managed_mode","HARDWARE")
-lima.write_attribute("saving_frames_per_file", nframes)
-
-# setup playback 
-dev.write_attribute("card", cardNos)
-dev.write_attribute("channel", allChannels)
-dev.write_attribute("dataSource",['PlaybackStream0'])
-dev.write_attribute("playbackFilename","/home/xspress3/desy/data/Zr_mca15_pass0.d16")
+dev.write_attribute("playbackFilename","/home/xspress3/remote/calibration/initial/playback/Ch1_Pt_37kHz_pass0.d16")
+dev.command_inout("loadPlayback",[0,0,1])
 dev.set_timeout_millis(30000)
-dev.command_inout("loadPlayback",[0,0])
-dev.write_attribute("runMode",[True])
 
-# do acquisition
-dev.write_attribute("useDtc",False)
 lima.write_attribute("acq_nb_frames",nframes)
 lima.write_attribute("acq_expo_time", exp_time)
-dev.write_attribute("setTiming",[timeSource, firstFrame, ttl, debounce])
-dev.write_attribute("setItfgTiming", [nframes,mode,gap])
-lima.write_attribute("acq_trigger_mode", "EXTERNAL_GATE")
+lima.write_attribute("acq_trigger_mode", "INTERNAL_TRIGGER")
 lima.command_inout("prepareAcq")
 lima.command_inout("startAcq")
 
+lastFrame = -1
+channel = 0;
+
 while dev.read_attribute("acqRunning").value :
-    time.sleep(0.5)
+    try:
+        time.sleep(0.5)
+        currentFrame=lima.read_attribute("last_image_ready").value
+        if currentFrame > lastFrame:
+            lastFrame = currentFrame
+            data = dev.command_inout("ReadScalers",[lastFrame, channel])
+            print "lastFrame", lastFrame, "allevent" ,data[3],"allgood",data[4], "dt%", data[9], "dtf", data[10]
+            hdata = dev.command_inout("ReadHistogram",[lastFrame, channel])
+            print "hist data ",hdata
+
+    except (KeyboardInterrupt, SystemExit):
+        lima.command_inout("stopAcq")

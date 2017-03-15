@@ -47,7 +47,6 @@ const int xPixelSize = 1;
 const int yPixelSize = 1;
 
 class BufferCtrlObj;
-class SavingCtrlObj;
 
 /*******************************************************************
  * \class Camera
@@ -90,7 +89,8 @@ public:
 		IntClk = XSP3_CLK_SRC_INT,		///< channel processing clock comes from fpga processor (testing only)
 		XtalClk = XSP3_CLK_SRC_XTAL,	///< adc and channel processing clock from crystal on the ADC board (normal single board or master operation).
 		ExtClk = XSP3_CLK_SRC_EXT,  	///< adc and channel processing clock from lemo clock connector on ADC board (slave boards)
-		Future = XSP3_CLK_SRC_FPGA		///< not implemented, for future expansion
+		Future = XSP3_CLK_SRC_FPGA,		///< not implemented, for future expansion
+		Mini = XSP3M_CLK_SRC_CDCM61004
 	};
 
 	enum ClockFlags {
@@ -145,9 +145,6 @@ public:
 
 	// -- Buffer control object
 	HwBufferCtrlObj* getBufferCtrlObj();
-
-	// -- Saving control object
-	SavingCtrlObj* getSavingCtrlObj();
 
 	//-- Synch control object
 	void setTrigMode(TrigMode mode);
@@ -225,14 +222,12 @@ public:
 	void startScope();
 	void setTiming(int time_src, int fixed_time, int alt_ttl_mode, int debounce, bool loop_io=false,
 			bool f0_invert=false, bool veto_invert=false);
+	void setTimingMode();
 	void formatRun(int chan, int nbits_eng=12, int aux1_mode=0, int adc_bits=0, int min_samples=0, int aux2_mode=0, bool pileup_reject=false);
 	void getDataSource(int chan, DataSrc& data_src);
 	void setDataSource(int chan, DataSrc data_src=Normal);
-	//	void setItfgTiming(int nframes, ItfgTriggerMode triggerMode, ItfgGapMode gapMode);
 	void setItfgTiming(int nframes, int triggerMode, int gapMode);
-        void setSaveChannels(std::vector<int> channels);
 	// internal only not for sip
-	std::vector<bool> getSaveChannels();
 
 private:
 	class AcqThread;
@@ -258,7 +253,6 @@ private:
 	bool m_use_dtc;
 	bool m_clear_flag;
 	int m_card;
-	std::vector<bool> m_saveChannels;
 
 	// Lima
 	AcqThread *m_acq_thread;   // Thread to handle data acquisition
@@ -278,7 +272,6 @@ private:
 
 	// Buffer control object
 	SoftBufferCtrlObj m_bufferCtrlObj;
-	SavingCtrlObj m_savingCtrlObj;
 
 	void readFrame(void* ptr, int frame_nb);
 };
