@@ -2,7 +2,7 @@
 from PyTango import Database, DbDevInfo, DeviceProxy
 import argparse
 
-parser = argparse.ArgumentParser(description='Description of your program')
+parser = argparse.ArgumentParser(description='Create Xspress3 Devices in Tango DB')
 parser.add_argument('-n','--name', help='Instance name, usually xspress3', required=True, metavar='instance_name')
 parser.add_argument('-x','--xspress3', help='Xspress 3 device name, default lima/xspress3/1', default='lima/xspress3/1', metavar='x3_dev_name')
 parser.add_argument('-l','--lima', help='LimaCCD device name, default lima/limaccd/1', default='lima/limaccd/1', metavar='lima_dev_name')
