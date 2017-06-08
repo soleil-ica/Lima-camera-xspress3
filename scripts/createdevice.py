@@ -9,6 +9,22 @@ parser.add_argument('-l','--lima', help='LimaCCD device name, default lima/limac
 parser.add_argument('-c','--channels', help='No of channels, default 1', type=int, default=1, metavar='no_channels')
 args = vars(parser.parse_args())
 
+
+try:
+    lima = DeviceProxy(args['lima'])
+    print 'Devices aleady exist, skipping'
+    exit(1)
+except:
+    pass
+
+try:
+    x3 = DeviceProxy(args['xspress3'])
+    print 'Devices aleady exist, skipping'
+    exit(1)
+except:
+    pass
+
+
 db = Database()
 
 print 'Creating LimaCCDs device'
@@ -31,13 +47,13 @@ lima.put_property({ 'LimaCameraType': 'Xspress3' })
 
 x3 = DeviceProxy(args['xspress3'])
 x3.put_property({
-	'baseIPaddress': '192.168.0.1',
-	'baseMacAddress': '02.00.00.00.00.00',
-	'basePort':	30123,
-	'maxFrames': 16384,
-	'nbChans': args['channels'],
-	'directoryName': '',
-	'cardIndex': 0
+    'baseIPaddress': '192.168.0.1',
+    'baseMacAddress': '02.00.00.00.00.00',
+    'basePort': 30123,
+    'maxFrames': 16384,
+    'nbChans': args['channels'],
+    'directoryName': '',
+    'cardIndex': 0
 })
 
 print 'Done'
