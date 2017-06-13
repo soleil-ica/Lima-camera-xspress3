@@ -32,19 +32,6 @@ using namespace std;
 //---------------------------
 //- utility thread
 //---------------------------
-class Camera::AcqThread: public Thread {
-DEB_CLASS_NAMESPC(DebModCamera, "Camera", "AcqThread");
-public:
-    AcqThread(Camera &aCam);
-    virtual ~AcqThread();
-
-protected:
-    virtual void threadFunction();
-
-private:
-    Camera& m_cam;
-};
-
 class Camera::ReadThread: public Thread {
 DEB_CLASS_NAMESPC(DebModCamera, "Camera", "ReadThread");
 public:
@@ -72,8 +59,6 @@ Camera::Camera(int nbCards, int maxFrames, string baseIPaddress, int basePort, s
     DEB_CONSTRUCTOR();
     m_card = -1;
     m_use_dtc = false;
-    m_acq_thread = new AcqThread(*this);
-    m_acq_thread->start();
     m_read_thread = new ReadThread(*this);
     m_read_thread->start();
     m_clear_flag = true;
@@ -83,7 +68,6 @@ Camera::Camera(int nbCards, int maxFrames, string baseIPaddress, int basePort, s
 
 Camera::~Camera() {
     DEB_DESTRUCTOR();
-    delete m_acq_thread;
     delete m_read_thread;
     if (xsp3_close(m_handle) < 0){
         THROW_HW_ERROR(Error) << xsp3_get_error_message();
@@ -143,27 +127,24 @@ void Camera::prepareAcq() {
 
 void Camera::startAcq() {
     DEB_MEMBER_FUNCT();
-    m_acq_frame_nb = 0; // Number of frames of data acquired;
-    m_read_frame_nb = 0; // Number of frames read into Lima buffers
     StdBufferCbMgr& buffer_mgr = m_bufferCtrlObj.getBuffer();
     buffer_mgr.setStartTimestamp(Timestamp::now());
     if (xsp3_histogram_start(m_handle, m_card) < 0) {
         THROW_HW_ERROR(Error) << xsp3_get_error_message();
     }
     AutoMutex aLock(m_cond.mutex());
-    m_wait_flag = false;
+    m_read_wait_flag = false;
+    m_read_frame_nb = 0; // Number of frames read into Lima buffers
+    m_status = Running;
     m_quit = false;
     m_abort = false;
+
     m_cond.broadcast();
-    // Wait that Acq thread start if it's an external trigger
-    //  while (m_trigger_mode == ExtGate && !m_thread_running)
-    //  m_cond.wait();
 }
 
 void Camera::stopAcq() {
     DEB_MEMBER_FUNCT();
     AutoMutex aLock(m_cond.mutex());
-    m_wait_flag = true;
     m_abort = true;
 }
 
@@ -175,183 +156,95 @@ void Camera::getStatus(Status& status) {
 
 int Camera::getNbHwAcquiredFrames() {
     DEB_MEMBER_FUNCT();
-    return m_acq_frame_nb;
+
+    int completed_frames;
+    checkProgress(completed_frames);
+
+    return completed_frames > m_nb_frames ? m_nb_frames : completed_frames;
 }
 
-void Camera::AcqThread::threadFunction() {
-    DEB_MEMBER_FUNCT();
-    AutoMutex aLock(m_cam.m_cond.mutex());
 
-    while (!m_cam.m_quit) {
-        while (m_cam.m_wait_flag && !m_cam.m_quit) {
-            m_cam.m_thread_running = false;
-            m_cam.m_cond.wait();
-        }
-        DEB_TRACE()  << "Acq thread Running";
-        m_cam.m_status = Running;
-        m_cam.m_thread_running = true;
-        if (m_cam.m_quit) {
-            DEB_TRACE()  << "acq thread quit called";
-            m_cam.m_status = Idle;
-            m_cam.m_thread_running = false;
-            return;
-        }
-        aLock.unlock();
-
-        bool continueFlag = true;
-        while (continueFlag && (!m_cam.m_nb_frames || m_cam.m_acq_frame_nb < m_cam.m_nb_frames)) {
-            DEB_TRACE() << DEB_VAR1(m_cam.m_trigger_mode);
-            if (m_cam.m_trigger_mode == IntTrig) {
-          
-                struct timespec delay, remain;
-                delay.tv_sec = (int)floor(m_cam.m_exp_time);
-                delay.tv_nsec = (int)(1E9*(m_cam.m_exp_time-floor(m_cam.m_exp_time)));
-                DEB_TRACE() << "acq thread will sleep for " << m_cam.m_exp_time << " second";
-                while (nanosleep(&delay, &remain) == -1 && errno == EINTR) {
-                    // stop called ?
-                    //AutoMutex aLock(m_cam.m_cond.mutex());
-                    //continueFlag = !m_cam.m_wait_flag;
-                  //if (m_cam.m_wait_flag) {
-                  //    DEB_TRACE() << "acq thread histogram stopped  by user";
-                  //    m_cam.stop();
-                  //break;
-                  //}
-                    delay = remain;
-                }
-                if (m_cam.m_abort) {
-                     DEB_TRACE() << "acq thread histogram stopped  by user";
-                     m_cam.stop();
-                     break;
-                } else if (m_cam.m_acq_frame_nb < m_cam.m_nb_frames-1) {
-                    m_cam.pause();
-                    m_cam.restart();
-                    DEB_TRACE() << "acq thread histogram paused and restarted " << m_cam.m_wait_flag;
-                } else {
-                    DEB_TRACE() << "acq thread histogram stop";
-                    m_cam.stop();
-                }
-                aLock.lock();
-                ++m_cam.m_acq_frame_nb;
-              
-                delay.tv_sec = 0;
-                delay.tv_nsec = (int)(1E9*0.5);
-                int completed_frames;
-                do {
-                    m_cam.checkProgress(completed_frames);
-                    DEB_TRACE() << DEB_VAR2(completed_frames, m_cam.m_acq_frame_nb);
-                        nanosleep(&delay, &remain);
-                } while (completed_frames < m_cam.m_acq_frame_nb);
-                m_cam.m_read_wait_flag = false;
-                DEB_TRACE() << "acq thread signal read thread: " << m_cam.m_acq_frame_nb << " frames collected";
-                m_cam.m_cond.broadcast();
-                aLock.unlock();
-
-            } else {
-                struct timespec delay, remain;
-                delay.tv_sec = 0;
-                delay.tv_nsec = (int)(1E9*0.5);
-                std::cout << "Started checking in while loop" << std::endl;
-
-                int completed_frames;
-                do {
-                     m_cam.checkProgress(completed_frames);
-                     std::cout << completed_frames << " " << m_cam.m_acq_frame_nb << std::endl;
-                     std::cout << "acq thread will sleep for " << delay.tv_nsec << " nanosecond" << std::endl;
-                     nanosleep(&delay, &remain);
-                     if (m_cam.m_abort) {
-                       DEB_TRACE() << "acq thread histogram stopped  by user";
-                       m_cam.stop();
-                       break;
-                     }
-                } while (completed_frames <= m_cam.m_acq_frame_nb);
-                aLock.lock();
-                m_cam.m_acq_frame_nb = (completed_frames > m_cam.m_nb_frames) ? m_cam.m_nb_frames : completed_frames;
-                m_cam.m_read_wait_flag = false;
-                DEB_TRACE() << "acq thread signal read thread: " << m_cam.m_acq_frame_nb << " frames collected";
-                m_cam.m_cond.broadcast();
-                aLock.unlock();
-
-            }
-
-            if (m_cam.m_abort) 
-                break;
-
-
-        }
-
-        //      if (!m_cam.m_wait_flag) { // user requested stop
-        if (!m_cam.m_abort) { // user requested stop
-            // wait for read thread to finish here
-            DEB_TRACE() << "acq thread Wait for read thead to finish";
-            aLock.lock();
-            m_cam.m_cond.wait();
-        }
-
-        m_cam.m_status = Idle;
-        m_cam.m_thread_running = false;
-        m_cam.m_wait_flag = true;
-        DEB_TRACE() << "acq thread finished acquire " << m_cam.m_acq_frame_nb << " frames, required " << m_cam.m_nb_frames << " frames";
-    }
+bool Camera::_checkFrames() {
+    AutoMutex aLock(m_cond.mutex());
+    return !m_nb_frames || m_read_frame_nb < m_nb_frames;
 }
 
-Camera::AcqThread::AcqThread(Camera& cam) : m_cam(cam) {
-    AutoMutex aLock(m_cam.m_cond.mutex());
-    m_cam.m_wait_flag = true;
-    m_cam.m_quit = false;
-    aLock.unlock();
-    pthread_attr_setscope(&m_thread_attr, PTHREAD_SCOPE_PROCESS);
-}
-
-Camera::AcqThread::~AcqThread() {
-    AutoMutex aLock(m_cam.m_cond.mutex());
-    m_cam.m_quit = true;
-    m_cam.m_cond.broadcast();
-    aLock.unlock();
-}
 
 void Camera::ReadThread::threadFunction() {
     DEB_MEMBER_FUNCT();
-    AutoMutex aLock(m_cam.m_cond.mutex());
     StdBufferCbMgr& buffer_mgr = m_cam.m_bufferCtrlObj.getBuffer();
 
-    while (!m_cam.m_quit) {
-        while (m_cam.m_read_wait_flag && !m_cam.m_quit) {
-          DEB_TRACE() << "Read thread waiting";
-            m_cam.m_cond.wait();
-        }
-        DEB_TRACE() << "Read Thread Running";
-        if (m_cam.m_quit)
+    while (true) {
+        AutoMutex aLock(m_cam.m_cond.mutex());
+
+        if (m_cam.m_quit) {
             return;
+        }
 
         if (m_cam.m_abort) {
             DEB_TRACE() << "User Aborted Acq, Read thread waiting";
+            m_cam.stop();
+            m_cam.m_status = Idle;
             m_cam.m_read_wait_flag = true;
-            continue;
+            m_cam.m_abort = false;
         }
+
+        if (m_cam.m_read_wait_flag && !m_cam.m_quit) {
+            DEB_TRACE() << "Read thread waiting";
+            printf("Read thread wait\n");
+            m_cam.m_cond.wait();
+        }
+
+        DEB_TRACE() << "Read Thread Running";
 
         aLock.unlock();
+        // printf("Read images unlocked\n");
 
         bool continueFlag = true;
-        while (continueFlag && (!m_cam.m_nb_frames || m_cam.m_read_frame_nb < m_cam.m_acq_frame_nb)) {
-            void* bptr = buffer_mgr.getFrameBufferPtr(m_cam.m_read_frame_nb);
-            DEB_TRACE() << "buffer pointer " << bptr;
-            DEB_TRACE() << "read histogram & scaler data frame number " << m_cam.m_read_frame_nb;
-            m_cam.readFrame(bptr, m_cam.m_read_frame_nb);
-            HwFrameInfoType frame_info;
-            frame_info.acq_frame_nb = m_cam.m_read_frame_nb;
-            continueFlag = buffer_mgr.newFrameReady(frame_info);
-            DEB_TRACE() << "readThread::threadFunction() newframe ready ";
-            ++m_cam.m_read_frame_nb;
-        }
-        aLock.lock();
-        // if all frames read wakeup the acq thread
-        if (m_cam.m_nb_frames == m_cam.m_read_frame_nb) {
-            DEB_TRACE() << "broadcast to wake acq thread";
-            m_cam.m_cond.broadcast();
+        while (continueFlag && m_cam._checkFrames()) {
+            int completed_frames;
+            m_cam.checkProgress(completed_frames);
+            DEB_TRACE() << "Checking frames acquired: " << completed_frames << (completed_frames > 0) << m_cam.m_read_frame_nb;
+
+            if (completed_frames > 0 && m_cam.m_read_frame_nb < completed_frames) {
+                void* bptr = buffer_mgr.getFrameBufferPtr(m_cam.m_read_frame_nb);
+                DEB_TRACE() << "buffer pointer " << bptr;
+                
+                timeval t1, t2;
+                double elapsedTime;
+
+                DEB_TRACE() << "read histogram & scaler data frame number " << m_cam.m_read_frame_nb;
+                m_cam.readFrame(bptr, m_cam.m_read_frame_nb);
+
+                HwFrameInfoType frame_info;
+                frame_info.acq_frame_nb = m_cam.m_read_frame_nb;
+
+                // printf("Locked, sending new frame ready %d\n", aLock.locked());
+                continueFlag = buffer_mgr.newFrameReady(frame_info);
+                
+                DEB_TRACE() << "readThread::threadFunction() newframe ready " << m_cam.m_read_frame_nb;
+                
+                // printf("Trying Lock after new frame %d\n", aLock.locked());
+                aLock.lock();                
+                ++m_cam.m_read_frame_nb;
+                aLock.unlock();
+            }
+
+            aLock.lock();                
+            if (m_cam.m_abort || m_cam.m_quit) continueFlag = false;
             aLock.unlock();
+
+            struct timespec delay, remain;
+            delay.tv_sec = (int)floor(m_cam.m_exp_time);
+            delay.tv_nsec = (int)(1E9*(m_cam.m_exp_time-floor(m_cam.m_exp_time)));
+            DEB_TRACE() << "read thread will sleep for " << m_cam.m_exp_time << " second";
+            nanosleep(&delay, &remain);
         }
-        // This thread will now wait for next frame or acq
+
+        aLock.lock();
         m_cam.m_read_wait_flag = true;
+        m_cam.m_status = Idle;
+        aLock.unlock();
     }
 }
 
@@ -359,7 +252,6 @@ Camera::ReadThread::ReadThread(Camera& cam) : m_cam(cam) {
     AutoMutex aLock(m_cam.m_cond.mutex());
     m_cam.m_read_wait_flag = true;
     m_cam.m_quit = false;
-    aLock.unlock();
     pthread_attr_setscope(&m_thread_attr, PTHREAD_SCOPE_PROCESS);
 }
 
@@ -367,7 +259,6 @@ Camera::ReadThread::~ReadThread() {
     AutoMutex aLock(m_cam.m_cond.mutex());
     m_cam.m_quit = true;
     m_cam.m_cond.broadcast();
-    aLock.unlock();
 }
 
 void Camera::getImageType(ImageType& type) {
@@ -460,6 +351,7 @@ void Camera::setTrigMode(TrigMode mode) {
 
 void Camera::getTrigMode(TrigMode& mode) {
     DEB_MEMBER_FUNCT();
+    AutoMutex aLock(m_cond.mutex());
     mode = m_trigger_mode;
     DEB_RETURN() << DEB_VAR1(mode);
 }
@@ -467,7 +359,7 @@ void Camera::getTrigMode(TrigMode& mode) {
 void Camera::getExpTime(double& exp_time) {
     DEB_MEMBER_FUNCT();
     DEB_TRACE() << "Camera::getExpTime() ";
-    //  AutoMutex aLock(m_cond.mutex());
+    AutoMutex aLock(m_cond.mutex());
     exp_time = m_exp_time;
     DEB_RETURN() << DEB_VAR1(exp_time);
 }
@@ -476,6 +368,7 @@ void Camera::setExpTime(double exp_time) {
     DEB_MEMBER_FUNCT();
     DEB_TRACE() << "Camera::setExpTime() " << DEB_VAR1(exp_time);
 
+    AutoMutex aLock(m_cond.mutex());
     m_exp_time = exp_time;
     setTimingMode();
 }
@@ -515,6 +408,8 @@ void Camera::setNbFrames(int nb_frames) {
     if (m_nb_frames < 0) {
         THROW_HW_ERROR(Error) << "Number of frames to acquire has not been set";
     }
+
+    AutoMutex aLock(m_cond.mutex());
     m_nb_frames = nb_frames;
     setTimingMode();
 }
@@ -527,8 +422,9 @@ void Camera::getNbFrames(int& nb_frames) {
 }
 
 bool Camera::isAcqRunning() const {
+    DEB_MEMBER_FUNCT();
     AutoMutex aLock(m_cond.mutex());
-    return m_thread_running;
+    return !m_read_wait_flag;
 }
 
 /////////////////////////////////
@@ -1170,9 +1066,10 @@ void Camera::readFrame(void *fptr, int frame_nb) {
  */
 void Camera::readScalers(Data& scalerData, int frame_nb, int channel) {
     DEB_MEMBER_FUNCT();
+    AutoMutex aLock(m_cond.mutex());
     HwFrameInfo frame_info;
-    if (frame_nb >= m_acq_frame_nb) {
-        THROW_HW_ERROR(Error) << "Frame not available yet";
+    if (frame_nb >= m_read_frame_nb) {
+        THROW_HW_ERROR(Error) << "Frame not available yet " << frame_nb << m_read_frame_nb;
     } else {
         StdBufferCbMgr& buffer_mgr = m_bufferCtrlObj.getBuffer();
         buffer_mgr.getFrameInfo(frame_nb,frame_info);
@@ -1253,8 +1150,9 @@ void Camera::correctScalerData(double* buff, u_int32_t* fptr, int channel, doubl
  */
 void Camera::readHistogram(Data& histData, int frame_nb, int channel) {
     DEB_MEMBER_FUNCT();
+    AutoMutex aLock(m_cond.mutex());
     HwFrameInfo frame_info;
-    if (frame_nb >= m_acq_frame_nb) {
+    if (frame_nb >= m_read_frame_nb) {
         THROW_HW_ERROR(Error) << "Frame not available yet";
     } else {
         StdBufferCbMgr& buffer_mgr = m_bufferCtrlObj.getBuffer();

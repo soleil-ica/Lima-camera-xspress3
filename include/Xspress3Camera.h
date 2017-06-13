@@ -230,7 +230,6 @@ public:
 	// internal only not for sip
 
 private:
-	class AcqThread;
 	class ReadThread;
 
 	// xspress3 specific
@@ -255,7 +254,6 @@ private:
 	int m_card;
 
 	// Lima
-	AcqThread *m_acq_thread;   // Thread to handle data acquisition
 	ReadThread *m_read_thread; // Thread to handle reading the data into the Lima buffers and writing the output file
 	TrigMode m_trigger_mode;
 	double m_exp_time;
@@ -274,6 +272,7 @@ private:
 	SoftBufferCtrlObj m_bufferCtrlObj;
 
 	void readFrame(void* ptr, int frame_nb);
+	bool _checkFrames(void);
 };
 
 inline std::ostream& operator<<(std::ostream& os, const Camera::Xsp3Roi& roi)
