@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from PyTango import Database, DbDevInfo, DeviceProxy
+from PyTango import Database, DbDevInfo, DeviceProxy, DevFailed
 import argparse
 
 parser = argparse.ArgumentParser(description='Create Xspress3 Devices in Tango DB')
@@ -10,19 +10,16 @@ parser.add_argument('-c','--channels', help='No of channels, default 1', type=in
 args = vars(parser.parse_args())
 
 
-try:
-    lima = DeviceProxy(args['lima'])
-    print 'Devices aleady exist, skipping'
-    exit(1)
-except:
-    pass
+for dev in ['lima', 'xspress3']:
+    d = None
+    try:
+        d = DeviceProxy(args[dev])
+    except DevFailed:
+        pass
 
-try:
-    x3 = DeviceProxy(args['xspress3'])
-    print 'Devices aleady exist, skipping'
-    exit(1)
-except:
-    pass
+    if d:
+        print 'Device aleady exist, skipping'
+        exit()
 
 
 db = Database()
