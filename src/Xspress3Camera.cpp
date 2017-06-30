@@ -104,15 +104,11 @@ void Camera::init() {
     initRoi(-1);
 
     DEB_TRACE() << "Set up clock register to use ADC clock...";
-    // the first card is the master clock
-    setCard(0);
-    // for testing only
-    //setupClocks(Camera::IntClk, Camera::Master | Camera::NoDither, 0);
+
     int gen = xsp3_get_generation(m_handle, m_card);
-    setupClocks(gen == 2 ? Camera::Mini : Camera::XtalClk, Camera::Master | Camera::NoDither, 0);
-    for (int i=1; i<m_nb_cards; i++) {
+    for (int i=0; i<m_nb_cards; i++) {
         setCard(i);
-        setupClocks(Camera::ExtClk, Camera::NoDither, 0);
+        setupClocks(gen == 2 ? Camera::Mini : Camera::XtalClk, Camera::Master | Camera::NoDither, 0);
     }
     setCard(-1);
     if (m_config_directory_name != "") {
@@ -424,7 +420,13 @@ void Camera::setTimingMode() {
     if (m_trigger_mode == IntTrig) {
         // Src 1 = Internal
         // setTiming(int time_src, int first_frame, int alt_ttl_mode, int debounce, bool loop_io, bool f0_invert, bool veto_invert);
+        setCard(0);
         setTiming(1, 0, alt_ttl_mode, debounce, false, false, false);
+        for (int i=1;i<m_nb_cards; i++) {
+            setCard(i);
+            setTiming(4, 0, alt_ttl_mode, 0, false, false, false);
+        }
+        setCard(-1);
 
         // setItfgTiming(int nframes, int triggerMode, int gapMode);
         // triggerMode 0 = Burst, gapMode 3 = 1us
