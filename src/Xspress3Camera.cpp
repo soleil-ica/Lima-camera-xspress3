@@ -105,6 +105,7 @@ void Camera::init() {
 
     DEB_TRACE() << "Set up clock register to use ADC clock...";
 
+    setCard(0);
     int gen = xsp3_get_generation(m_handle, m_card);
     for (int i=0; i<m_nb_cards; i++) {
         setCard(i);
