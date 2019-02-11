@@ -82,6 +82,9 @@ int xspress3FemXADCRead(void* femHandle, u_int32_t address, size_t size, u_int32
 int xspress3FemWriteDMAorClk(void* femHandle, int offset, size_t num_writes, u_int32_t* value);
 int xspress3FemReadDMAorClk(void* femHandle, int offset, size_t num_reads, u_int32_t* value);
 
+int xspress3FemMPSPIWrite(void* femHandle, int chip, int reg, u_int32_t *value);
+int xspress3FemMPSPIRead(void* femHandle, int chip, int reg, u_int32_t *value);
+int xspress3FemPersonalityRead(void* femHandle, u_int32_t sub_command, u_int32_t stream_mask, u_int32_t width_bytes, u_int32_t first, u_int32_t num_ops, void* value); 
 
 #ifdef __cplusplus
 }  /* Closing brace for extern "C" */

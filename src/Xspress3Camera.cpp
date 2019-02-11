@@ -1364,11 +1364,21 @@ void Camera::loadPlayback(string filename, int src0, int src1, int streams, int 
     int smooth_join;
     int enb_higher_chan;
 
+    int no_retry = 0;
+    int xspress4_dig = 0;
+    int glob_reset = 0;
+
     src[0] = src0;
     src[1] = src1;
 
     if (xsp3_get_generation(m_handle, m_card) == 2) enb_higher_chan = 1;
-    if (xsp3_playback_load_x3(m_handle, m_card, (char*)filename.c_str(), src, streams, str0dig, smooth_join, enb_higher_chan) < 0) {
+
+    if (xsp3_get_generation(m_handle, m_card) == 3) {
+        xspress4_dig = 1;
+        glob_reset = 1;
+    }
+
+    if (xsp3_playback_load_x3(m_handle, m_card, (char*)filename.c_str(), src, streams, str0dig, smooth_join, enb_higher_chan, no_retry, xspress4_dig, glob_reset) < 0) {
         THROW_HW_ERROR(Error) << xsp3_get_error_message();
     }
 

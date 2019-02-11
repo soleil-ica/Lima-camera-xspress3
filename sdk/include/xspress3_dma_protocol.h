@@ -31,6 +31,12 @@
 #define XSP3_DMA_CMD_CHECK_RX_DESC			13
 #define XSP3_DMA_CMD_SET_MSG_PPC1			14
 #define XSP3_DMA_CMD_SET_MSG_PPC2			15
+#define XSP3_DMA_CMD_GET_DESC_STATUS		16
+#define XSP3_DMA_CMD_REUSE					17
+#define XSP3_DMA_CMD_CHECK_RX_DESC_CIRCULAR 18
+#define XSP3_DMA_CMD_READ_TF_STATUS		 	19
+#define XSP3_DMA_CMD_READ_TF_MARKERS		20
+
 //! [XSP3_DMA_COMMANDS]
 
 #define XSP3_MBOX_MAGIC	0xF0123456
@@ -51,6 +57,11 @@
 #define XSP3_DMA_ERROR_MSG_LEVEL	11
 #define XSP3_DMA_ERROR_OUTSIDE_VA	12
 #define XSP3_DMA_INSUFFICIENT_MEM	13
+
+#define XSP3_DMA_ERROR_FIRMWARE_DETECTED 20
+#define XSP3_DMA_ERROR_DESC_SOF_EOF 	21
+#define XSP3_DMA_ERROR_DESC_LENGTH 		22
+#define XSP3_DMA_ERROR_DESC_TIME_FRAME 	23
 
 /*! @defgroup XSP3_DMA_STREAM_NUMBER  Number used to identify DMA streams controlled by PPC1 in the Virtex-5 FPGA.
     @ingroup XSP3_DMA
@@ -116,6 +127,8 @@
 
 #define XSP3_DMA_DEBUG_DESC_ALL_SMALL		0x10000
 #define XSP3_DMA_DEBUG_DESC_SHORT_BURSTS	0x20000
+
+#define XSP3_DMA_START_CIRCULAR				1		// Set Tail descriptor so DMA will try to cycle the buffers.
 
 /*! @defgroup XSP3_DMA_LAYOUT MACROS to interpret the layout option when configuring memory, currently on XSPRESS3-mini only.
     @ingroup XSP3_DMA
@@ -251,6 +264,16 @@ typedef struct
 } XSP3_DMA_MsgResend;
 //! [XSP3_DMA_MSG_RESEND]
 
+
+//! [XSP3_DMA_MSG_REUSE]
+typedef struct
+{
+	u_int32_t first_desc;
+	u_int32_t num_desc;
+	u_int32_t options;
+} XSP3_DMA_MsgReuse;
+//! [XSP3_DMA_MSG_REUSE]
+
 //! [XSP3_DMA_MSG_PRINT_DESC]
 typedef struct
 {
@@ -269,6 +292,8 @@ typedef struct
 } XSP3_DMA_MsgCheckDesc;
 //! [XSP3_DMA_MSG_CHECK_DESC]
 
+
+
 //! [XSP3_DMA_MSG_CHECK]
 #define XSP3_DMA_MSG_CHECK_NONE		1			// Do not do any checks, disables default checks
 #define XSP3_DMA_MSG_CHECK_LENGTH	2			// Check length from trailer in 10G Rx and Scalers
@@ -278,6 +303,14 @@ typedef struct
 #define XSP3_DMA_MSG_CHECK_TIMEFRAME 0x20			// Check time frame is in the app0 field for Xspress3 mini hist and scalars
 
 //! [XSP3_DMA_MSG_CHECK]
+
+//! [XSP3_DMA_MSG_GET_DESC_STATUS]
+typedef struct
+{
+	u_int32_t first_desc;
+} XSP3_DMA_MsgGetDescStatus;
+//! [XSP3_DMA_MSG_GET_DESC_STATUS]
+
 
 #define XSP3_DMA_MSG_TP_INC32		0
 #define XSP3_DMA_MSG_TP_INC8		1
@@ -306,5 +339,15 @@ typedef struct
 
 // Magic for Mail Box is chosen to start F0 as there are no valid addresses at 0xF0000000
 
+typedef struct {
+	u_int64_t num_good;
+	u_int64_t num_completed;
+	u_int64_t last_tf;
+	u_int32_t error_code;
+	u_int32_t desc_num;
+	u_int32_t dma_status;
+	u_int32_t desc_status;
+	u_int64_t desc_tf;
+} XSP3_DMA_CheckCircular;
 
 #endif /* XSPRESS3_DMA_PROTOCOL_H_ */
