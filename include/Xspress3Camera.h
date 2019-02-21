@@ -90,7 +90,9 @@ public:
 		XtalClk = XSP3_CLK_SRC_XTAL,	///< adc and channel processing clock from crystal on the ADC board (normal single board or master operation).
 		ExtClk = XSP3_CLK_SRC_EXT,  	///< adc and channel processing clock from lemo clock connector on ADC board (slave boards)
 		Future = XSP3_CLK_SRC_FPGA,		///< not implemented, for future expansion
-		Mini = XSP3M_CLK_SRC_CDCM61004
+		Mini = XSP3M_CLK_SRC_CDCM61004, //< X3m cdmc clock
+		X4AdcLMK = XSP3M_CLK_SRC_LMK61E2,      ///< X4 ADC board lmk at 100mhz
+		X4MplLMK = XSP4_CLK_SRC_MIDPLN_LMK61E2 ///< X4 midplane clock at 100mhz
 	};
 
 	enum ClockFlags {

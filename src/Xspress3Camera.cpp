@@ -109,7 +109,9 @@ void Camera::init() {
     int gen = xsp3_get_generation(m_handle, m_card);
     for (int i=0; i<m_nb_cards; i++) {
         setCard(i);
-        setupClocks(gen == 2 ? Camera::Mini : Camera::XtalClk, Camera::Master | Camera::NoDither, 0);
+        setupClocks(gen == 3 ? (m_nb_cards > 1 ? Camera::X4MplLMK : Camera::X4AdcLMK): 
+            (gen == 2 ? Camera::Mini : Camera::XtalClk), 
+        Camera::Master | Camera::NoDither, 0);
     }
     setCard(-1);
     if (m_config_directory_name != "") {
