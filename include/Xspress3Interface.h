@@ -116,7 +116,8 @@ public:
 	virtual void stopAcq();
 	virtual void getStatus(StatusType& status);
 	virtual int getNbHwAcquiredFrames();
-
+    //! get the camera object to access it directly from client
+    Camera& getCamera() { return m_cam; }
 private:
 	Camera& m_cam;
 	CapList m_cap_list;

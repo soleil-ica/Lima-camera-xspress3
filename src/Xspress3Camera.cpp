@@ -174,7 +174,7 @@ void Camera::getStatus(Status& status) {
 
 int Camera::getNbHwAcquiredFrames() {
     DEB_MEMBER_FUNCT();
-    return m_acq_frame_nb;
+    return m_read_frame_nb;
 }
 
 void Camera::AcqThread::threadFunction() {
@@ -618,7 +618,6 @@ void Camera::getNbScalers(int& nb_scalers) {
  */
 void Camera::getRevision(int& revision) {
     DEB_MEMBER_FUNCT();
-    DEB_TRACE() << "Camera::getRevision() ";
     if ((revision = xsp3_get_revision(m_handle)) < 0) {
         THROW_HW_ERROR(Error) << xsp3_get_error_message();
     }
@@ -1176,7 +1175,7 @@ void Camera::readFrame(void *fptr, int frame_nb) {
 void Camera::readScalers(Data& scalerData, int frame_nb, int channel) {
     DEB_MEMBER_FUNCT();
     HwFrameInfo frame_info;
-    if (frame_nb >= m_acq_frame_nb) {
+    if (frame_nb >= m_read_frame_nb) {
         THROW_HW_ERROR(Error) << "Frame not available yet";
     } else {
         StdBufferCbMgr& buffer_mgr = m_bufferCtrlObj.getBuffer();
@@ -1259,7 +1258,7 @@ void Camera::correctScalerData(double* buff, u_int32_t* fptr, int channel, doubl
 void Camera::readHistogram(Data& histData, int frame_nb, int channel) {
     DEB_MEMBER_FUNCT();
     HwFrameInfo frame_info;
-    if (frame_nb >= m_acq_frame_nb) {
+    if (frame_nb >= m_read_frame_nb) {
         THROW_HW_ERROR(Error) << "Frame not available yet";
     } else {
         StdBufferCbMgr& buffer_mgr = m_bufferCtrlObj.getBuffer();
