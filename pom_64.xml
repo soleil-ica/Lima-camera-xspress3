@@ -39,7 +39,7 @@
                 <dependency>
                     <groupId>fr.soleil.lib</groupId>
                     <artifactId>LimaCore-amd64-Linux-gcc-shared-${mode}</artifactId>
-                    <version>1.7.7</version>
+                    <version>1.7.8</version>
                 </dependency>     
                 
             </dependencies>

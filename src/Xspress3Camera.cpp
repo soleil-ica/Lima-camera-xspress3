@@ -319,8 +319,10 @@ void Camera::ReadThread::threadFunction() {
             m_cam.m_cond.wait();
         }
         DEB_TRACE() << "Read Thread Running";
-        if (m_cam.m_quit)
+        if (m_cam.m_quit) {
+		DEB_TRACE()  << "Read thread quit called";
             return;
+        }
 
         if (m_cam.m_abort) {
             DEB_TRACE() << "User Aborted Acq, Read thread waiting";
@@ -1187,7 +1189,7 @@ void Camera::readScalers(Data& scalerData, int frame_nb, int channel) {
         Buffer *fbuf = new Buffer();
         u_int32_t *fptr = (u_int32_t*)frame_info.frame_ptr;
         fptr += channel * (m_npixels + m_nscalers) + m_npixels;
-        DEB_TRACE() << DEB_VAR1(m_use_dtc);
+        ///DEB_TRACE() << DEB_VAR1(m_use_dtc);
 
         scalerData.type = Data::DOUBLE;
         double *buff = new double[m_nscalers+2];
@@ -1209,7 +1211,7 @@ void Camera::readScalers(Data& scalerData, int frame_nb, int channel) {
         double allevt = buff[3];
         double ctime = buff[0];
 
-        DEB_TRACE() << DEB_VAR4(evtwidth, resets, allevt, ctime);
+        ////DEB_TRACE() << DEB_VAR4(evtwidth, resets, allevt, ctime);
 
         *bptr++ = 100.0*(allevt*(evtwidth+1) + resets)/ctime;
         *bptr++ = ctime/(ctime - (allevt*(evtwidth+1) + resets));
