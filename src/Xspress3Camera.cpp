@@ -249,13 +249,13 @@ void Camera::AcqThread::threadFunction() {
                 struct timespec delay, remain;
                 delay.tv_sec = 0;
                 delay.tv_nsec = (int)(1E9*0.5);
-                std::cout << "Started checking in while loop" << std::endl;
+                DEB_TRACE() << "Started checking in while loop" << std::endl;
 
                 int completed_frames;
                 do {
                      m_cam.checkProgress(completed_frames);
-                     std::cout << completed_frames << " " << m_cam.m_acq_frame_nb << std::endl;
-                     std::cout << "acq thread will sleep for " << delay.tv_nsec << " nanosecond" << std::endl;
+                     DEB_TRACE() << completed_frames << " " << m_cam.m_acq_frame_nb;
+                     DEB_TRACE() << "acq thread will sleep for " << delay.tv_nsec << " nanosecond";
                      nanosleep(&delay, &remain);
                      if (m_cam.m_abort) {
                        DEB_TRACE() << "acq thread histogram stopped  by user";
@@ -333,17 +333,35 @@ void Camera::ReadThread::threadFunction() {
         aLock.unlock();
 
         bool continueFlag = true;
+		double delta_time_readframe = 0;		
+		double delta_time_readframe_all = 0;
+		double delta_time_newframe = 0;
+		double delta_time_newframe_all = 0;
+		
         while (continueFlag && (!m_cam.m_nb_frames || m_cam.m_read_frame_nb < m_cam.m_acq_frame_nb)) {
             void* bptr = buffer_mgr.getFrameBufferPtr(m_cam.m_read_frame_nb);
             DEB_TRACE() << "buffer pointer " << bptr;
             DEB_TRACE() << "read histogram & scaler data frame number " << m_cam.m_read_frame_nb;
+			Timestamp t0_readframe = Timestamp::now();
             m_cam.readFrame(bptr, m_cam.m_read_frame_nb);
+			Timestamp t1_readframe = Timestamp::now();
+			delta_time_readframe = (t1_readframe - t0_readframe);
+			delta_time_readframe_all+=delta_time_readframe;
+			 
+			Timestamp t0_newframe = Timestamp::now();
             HwFrameInfoType frame_info;
             frame_info.acq_frame_nb = m_cam.m_read_frame_nb;
-            continueFlag = buffer_mgr.newFrameReady(frame_info);
-            DEB_TRACE() << "readThread::threadFunction() newframe ready ";
+            continueFlag = buffer_mgr.newFrameReady(frame_info);           
             ++m_cam.m_read_frame_nb;
+			Timestamp t1_newframe = Timestamp::now();
+			delta_time_newframe = (t1_newframe - t0_newframe); 
+			delta_time_newframe_all+=delta_time_newframe;
+			DEB_TRACE() << "readThread::threadFunction() newframe ready ";
         }
+		DEB_TRACE() << "readFrame : elapsed time of " <<  m_cam.m_acq_frame_nb << " frames = "<< (int) (delta_time_readframe_all * 1000) << " (ms)";	
+		DEB_TRACE() << "newFrame : elapsed time of " <<  m_cam.m_acq_frame_nb << " frames = " << (int) (delta_time_newframe_all * 1000) << " (ms)";
+
+		
         aLock.lock();
         // if all frames read wakeup the acq thread
         if (m_cam.m_nb_frames == m_cam.m_read_frame_nb) {
