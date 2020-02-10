@@ -249,7 +249,7 @@ void Camera::AcqThread::threadFunction() {
                 struct timespec delay, remain;
                 delay.tv_sec = 0;
                 delay.tv_nsec = (int)(1E9*0.5);
-                DEB_TRACE() << "Started checking in while loop" << std::endl;
+                DEB_TRACE() << "Started checking in while loop";
 
                 int completed_frames;
                 do {
